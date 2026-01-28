@@ -9,8 +9,22 @@ description = "K2P web API"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
-  "asgiref==3.11.0",
   "Django==5.2.10",
   "djangorestframework==3.16.1",
-  "sqlparse==0.5.5",
+  "psycopg[binary]==3.2.5",
 ]
+
+[project.optional-dependencies]
+dev = [
+  "pytest==9.0.2",
+  "pytest-django==4.8.0",
+  "python-dotenv==1.0.1",
+  "ruff==0.9.4",
+]
+
+[tool.setuptools]
+package-dir = {"" = "api"}
+
+[tool.setuptools.packages.find]
+where = ["api"]
+include = ["k2pweb", "apps", "apps.*"]

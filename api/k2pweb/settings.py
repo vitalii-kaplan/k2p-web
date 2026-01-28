@@ -11,28 +11,60 @@ https://docs.djangoproject.com/en/5.0/ref/settings/
 """
 
 from pathlib import Path
+import os
+import sys
+
+API_DIR = Path(__file__).resolve().parent.parent  # .../api
+REPO_ROOT = Path(os.environ.get("REPO_ROOT", API_DIR.parent)).resolve()
+
+# Optional .env loading for local dev
+try:
+    from dotenv import load_dotenv  # type: ignore
+
+    load_dotenv(REPO_ROOT / ".env")
+except Exception:
+    pass
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
-BASE_DIR = Path(__file__).resolve().parent.parent
+BASE_DIR = API_DIR
 
-REPO_ROOT = BASE_DIR.parent  # BASE_DIR is usually ./api
-JOB_STORAGE_ROOT = REPO_ROOT / "var" / "jobs"
-RESULT_STORAGE_ROOT = REPO_ROOT / "var" / "results"
 
-K8S_NAMESPACE = "k2p"
-K2P_IMAGE = "ghcr.io/vitalii-kaplan/knime2py:main"
+def env_bool(name: str, default: bool = False) -> bool:
+    v = os.environ.get(name)
+    if v is None:
+        return default
+    return v.strip().lower() in ("1", "true", "yes", "on")
+
+
+def env_list(name: str, default: list[str] | None = None) -> list[str]:
+    v = os.environ.get(name)
+    if v is None:
+        return default or []
+    return [x.strip() for x in v.split(",") if x.strip()]
+
+
+def resolve_under_repo(p: str) -> Path:
+    path = Path(p)
+    return (REPO_ROOT / path).resolve() if not path.is_absolute() else path.resolve()
 
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.0/howto/deployment/checklist/
 
-# SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = "django-insecure-0fge#b^armovmna*enp#z=g3oxnunk(3(iozo)t2l36)6a+yya"
-
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+IS_PYTEST = "PYTEST_CURRENT_TEST" in os.environ or any("pytest" in arg for arg in sys.argv)
+DEBUG = env_bool("DEBUG", False) or IS_PYTEST
 
-ALLOWED_HOSTS = []
+# SECURITY WARNING: keep the secret key used in production secret!
+SECRET_KEY = os.environ.get("SECRET_KEY", "")
+if not SECRET_KEY:
+    if IS_PYTEST:
+        SECRET_KEY = "test-secret-key"
+    elif not DEBUG:
+        raise RuntimeError("SECRET_KEY must be set in production.")
+
+ALLOWED_HOSTS = env_list("ALLOWED_HOSTS", ["127.0.0.1", "localhost"] if DEBUG else [])
+CSRF_TRUSTED_ORIGINS = env_list("CSRF_TRUSTED_ORIGINS", [])
 
 
 # Application definition
@@ -86,12 +118,23 @@ WSGI_APPLICATION = "k2pweb.wsgi.application"
 # Database
 # https://docs.djangoproject.com/en/5.0/ref/settings/#databases
 
-DATABASES = {
-    "default": {
-        "ENGINE": "django.db.backends.sqlite3",
-        "NAME": BASE_DIR / "db.sqlite3",
+DB_ENGINE = os.environ.get("DB_ENGINE", "sqlite").strip().lower()
+
+if DB_ENGINE == "postgres":
+    DATABASES = {
+        "default": {
+            "ENGINE": "django.db.backends.postgresql",
+            "NAME": os.environ.get("DB_NAME", "k2pweb"),
+            "USER": os.environ.get("DB_USER", "k2pweb"),
+            "PASSWORD": os.environ.get("DB_PASSWORD", ""),
+            "HOST": os.environ.get("DB_HOST", "127.0.0.1"),
+            "PORT": os.environ.get("DB_PORT", "5432"),
+        }
     }
-}
+else:
+    sqlite_path = resolve_under_repo(os.environ.get("SQLITE_PATH", "var/db.sqlite3"))
+    sqlite_path.parent.mkdir(parents=True, exist_ok=True)
+    DATABASES = {"default": {"ENGINE": "django.db.backends.sqlite3", "NAME": str(sqlite_path)}}
 
 
 # Password validation
@@ -130,9 +173,35 @@ USE_TZ = True
 
 STATIC_URL = "static/"
 
+# Storage roots (support relative paths in env)
+JOB_STORAGE_ROOT = resolve_under_repo(os.environ.get("JOB_STORAGE_ROOT", "var/jobs"))
+RESULT_STORAGE_ROOT = resolve_under_repo(os.environ.get("RESULT_STORAGE_ROOT", "var/results"))
+
+JOB_STORAGE_ROOT.mkdir(parents=True, exist_ok=True)
+RESULT_STORAGE_ROOT.mkdir(parents=True, exist_ok=True)
+
+# Use Django STORAGES so default_storage writes under JOB_STORAGE_ROOT
+STORAGES = {
+    "default": {
+        "BACKEND": "django.core.files.storage.FileSystemStorage",
+        "OPTIONS": {"location": str(JOB_STORAGE_ROOT)},
+    },
+    "staticfiles": {
+        "BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage",
+    },
+}
+
+# Worker reads these for result location
+RESULT_STORAGE_ROOT = str(RESULT_STORAGE_ROOT)
+JOB_STORAGE_ROOT = str(JOB_STORAGE_ROOT)
+REPO_ROOT = str(REPO_ROOT)
+
+# Worker/K8s settings
+K8S_NAMESPACE = os.environ.get("K8S_NAMESPACE", "k2p")
+K2P_IMAGE = os.environ.get("K2P_IMAGE", "ghcr.io/vitalii-kaplan/knime2py:main")
+MAX_QUEUED_JOBS = int(os.environ.get("MAX_QUEUED_JOBS", "50"))
+
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.0/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
-
-

@@ -30,7 +30,7 @@ Create venv and install:
 ```bash
 python -m venv .venv
 source .venv/bin/activate
-pip install -e .
+pip install -e .[dev]
 ```
 
 Run migrations:

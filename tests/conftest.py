@@ -4,18 +4,21 @@ import os
 import sys
 from pathlib import Path
 
-import django
-from django.conf import settings
+import pytest
 
 root = Path(__file__).resolve().parents[1]
 api_dir = root / "api"
 if str(api_dir) not in sys.path:
     sys.path.insert(0, str(api_dir))
 
-os.environ.setdefault("DJANGO_SETTINGS_MODULE", "k2pweb.settings")
+
+def pytest_load_initial_conftests(early_config, parser, args) -> None:
+    os.environ.setdefault("DJANGO_SETTINGS_MODULE", "k2pweb.settings")
+    os.environ.setdefault("DEBUG", "1")
+    os.environ.setdefault("SECRET_KEY", "test-secret-key")
 
 
-def pytest_configure() -> None:
-    django.setup()
-    # Allow Django test client host header.
+@pytest.fixture(autouse=True)
+def _allow_testserver(settings):
     settings.ALLOWED_HOSTS = ["testserver", "localhost"]
+
