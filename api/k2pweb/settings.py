@@ -53,14 +53,14 @@ def resolve_under_repo(p: str) -> Path:
 
 # SECURITY WARNING: don't run with debug turned on in production!
 IS_PYTEST = "PYTEST_CURRENT_TEST" in os.environ or any("pytest" in arg for arg in sys.argv)
-DEBUG = env_bool("DEBUG", False) or IS_PYTEST
+DEBUG = env_bool("DEBUG", (REPO_ROOT / ".env").exists()) or IS_PYTEST
 
 # SECURITY WARNING: keep the secret key used in production secret!
 SECRET_KEY = os.environ.get("SECRET_KEY", "")
 if not SECRET_KEY:
-    if IS_PYTEST:
-        SECRET_KEY = "test-secret-key"
-    elif not DEBUG:
+    if IS_PYTEST or DEBUG:
+        SECRET_KEY = "dev-secret-key"
+    else:
         raise RuntimeError("SECRET_KEY must be set in production.")
 
 ALLOWED_HOSTS = env_list("ALLOWED_HOSTS", ["127.0.0.1", "localhost"] if DEBUG else [])
