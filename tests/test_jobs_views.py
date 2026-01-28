@@ -36,6 +36,16 @@ class JobsViewsTests(TestCase):
         self.assertEqual(detail.data["id"], job_id)
         self.assertEqual(detail.data["status"], Job.Status.QUEUED)
 
+    def test_create_rejects_when_queue_full(self) -> None:
+        Job.objects.create(status=Job.Status.QUEUED)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with override_settings(JOB_STORAGE_ROOT=tmpdir, MAX_QUEUED_JOBS=1):
+                upload = SimpleUploadedFile("discounts.zip", b"zip-bytes", content_type="application/zip")
+                resp = self.client.post("/api/jobs", data={"bundle": upload}, format="multipart")
+
+        self.assertEqual(resp.status_code, 429)
+        self.assertEqual(resp.data["error"]["code"], "queue_full")
+
     def test_result_zip_requires_success(self) -> None:
         job = Job.objects.create(status=Job.Status.QUEUED)
         resp = self.client.get(f"/api/jobs/{job.id}/result.zip")

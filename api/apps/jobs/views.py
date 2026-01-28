@@ -20,6 +20,18 @@ class JobsCreateView(APIView):
     parser_classes = [MultiPartParser, FormParser]
 
     def post(self, request):
+        max_queued = getattr(settings, "MAX_QUEUED_JOBS", 50)
+        if max_queued >= 0 and Job.objects.filter(status=Job.Status.QUEUED).count() >= max_queued:
+            return Response(
+                {
+                    "error": {
+                        "code": "queue_full",
+                        "message": "Job queue is full. Try again later.",
+                        "details": {"max_queued_jobs": max_queued},
+                    }
+                },
+                status=status.HTTP_429_TOO_MANY_REQUESTS,
+            )
         ser = JobCreateSerializer(data=request.data)
         if not ser.is_valid():
             return Response(
