@@ -24,6 +24,9 @@ jobs:
           npm install
 
       - name: Run tests
+        env:
+          DEBUG: "1"
+          SECRET_KEY: "ci-test-secret"
         run: |
           python -m pytest
           npm run test:ui
