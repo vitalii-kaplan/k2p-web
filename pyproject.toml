@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "k2pweb"
+version = "0.1.0"
+description = "K2P web API"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "asgiref==3.11.0",
+  "Django==5.2.10",
+  "djangorestframework==3.16.1",
+  "sqlparse==0.5.5",
+]
