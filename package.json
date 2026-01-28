@@ -1,0 +1,11 @@
+{
+  "name": "k2p-web-ui-tests",
+  "private": true,
+  "type": "commonjs",
+  "devDependencies": {
+    "vitest": "3.0.7"
+  },
+  "scripts": {
+    "test:ui": "vitest run"
+  }
+}

@@ -99,3 +99,10 @@ Read from Django settings (environment or defaults):
 ```bash
 python -m pytest
 ```
+
+UI unit tests require Node.js + npm (install via `brew install node`).
+
+```bash
+npm install
+npm run test:ui
+```

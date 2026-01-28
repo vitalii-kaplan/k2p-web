@@ -29,10 +29,14 @@ class Command(BaseCommand):
         ns = getattr(settings, "K8S_NAMESPACE", "k2p")
         image = getattr(settings, "K2P_IMAGE", "ghcr.io/vitalii-kaplan/knime2py:main")
 
-        while True:
-            self._submit_one(ns=ns, image=image)
-            self._reconcile_running(ns=ns)
-            time.sleep(sleep_s)
+        try:
+            while True:
+                self._submit_one(ns=ns, image=image)
+                self._reconcile_running(ns=ns)
+                time.sleep(sleep_s)
+        except KeyboardInterrupt:
+            self.stdout.write(self.style.WARNING("Worker stopped."))
+            return
 
     def _submit_one(self, *, ns: str, image: str) -> None:
         with transaction.atomic():

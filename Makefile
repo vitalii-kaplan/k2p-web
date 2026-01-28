@@ -1,4 +1,4 @@
-.PHONY: help dev server worker test lint fmt migrate makemigrations shell reset-db kind-up kind-down venv
+.PHONY: help dev server worker test test-ui lint fmt migrate makemigrations shell reset-db kind-up kind-down venv
 
 PYTHON ?= python
 MANAGE := $(PYTHON) api/manage.py
@@ -9,6 +9,7 @@ help:
 	@echo "  server        Run Django dev server"
 	@echo "  worker        Run k2p worker loop"
 	@echo "  test          Run pytest"
+	@echo "  test-ui       Run UI unit tests (requires npm)"
 	@echo "  lint          Run ruff"
 	@echo "  fmt           Run ruff format"
 	@echo "  migrate       Apply migrations"
@@ -32,6 +33,10 @@ worker:
 
 test:
 	$(PYTHON) -m pytest
+	npm run test:ui
+
+test-ui:
+	npm run test:ui
 
 lint:
 	$(PYTHON) -m ruff check .
