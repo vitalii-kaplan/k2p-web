@@ -104,3 +104,23 @@ class JobResultZipView(APIView):
 
         filename = f"{job.id}.zip"
         return FileResponse(tmp, as_attachment=True, filename=filename, content_type="application/zip")
+
+
+class JobLogsView(APIView):
+    """
+    Get job stdout/stderr tail stored in the DB.
+
+    GET /api/jobs/<uuid>/logs
+    """
+
+    def get(self, request, job_id):
+        job = get_object_or_404(Job, id=job_id)
+        return Response(
+            {
+                "id": str(job.id),
+                "status": job.status,
+                "stdout_tail": job.stdout_tail or "",
+                "stderr_tail": job.stderr_tail or "",
+            },
+            status=status.HTTP_200_OK,
+        )

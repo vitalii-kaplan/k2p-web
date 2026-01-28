@@ -16,6 +16,8 @@ Including another URLconf
 """
 from django.contrib import admin
 from django.urls import include, path
+from rest_framework.schemas import get_schema_view
+from rest_framework.permissions import AllowAny
 from apps.core.health import healthz
 
 def index(_request):
@@ -26,6 +28,6 @@ urlpatterns = [
     path("", index),
     path("admin/", admin.site.urls),
     path("healthz", healthz),
+    path("api/schema/", get_schema_view(title="k2p-web API", version="1.0.0", permission_classes=[AllowAny]), name="openapi-schema"),
     path("api/", include("apps.jobs.urls")),
 ]
-

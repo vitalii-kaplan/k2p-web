@@ -84,3 +84,14 @@ class JobsViewsTests(TestCase):
         data = b"".join(resp.streaming_content)
         with zipfile.ZipFile(io.BytesIO(data), "r") as zf:
             self.assertIn("out.txt", zf.namelist())
+
+    def test_logs_returns_stdout_stderr(self) -> None:
+        job = Job.objects.create(
+            status=Job.Status.RUNNING,
+            stdout_tail="hello",
+            stderr_tail="boom",
+        )
+        resp = self.client.get(f"/api/jobs/{job.id}/logs")
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.data["stdout_tail"], "hello")
+        self.assertEqual(resp.data["stderr_tail"], "boom")

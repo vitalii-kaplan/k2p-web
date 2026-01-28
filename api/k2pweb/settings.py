@@ -81,6 +81,10 @@ INSTALLED_APPS = [
     "apps.jobs",
 ]
 
+REST_FRAMEWORK = {
+    "DEFAULT_SCHEMA_CLASS": "rest_framework.schemas.openapi.AutoSchema",
+}
+
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "var" / "media"
 
