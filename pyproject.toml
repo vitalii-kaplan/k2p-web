@@ -18,6 +18,7 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
   "pytest==9.0.2",
+  "pytest-cov==6.0.0",
   "pytest-django==4.8.0",
   "python-dotenv==1.0.1",
   "ruff==0.9.4",
