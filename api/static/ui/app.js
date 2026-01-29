@@ -11,9 +11,13 @@
     isUnsafeRel,
     extractSettingsPathsFromWorkflowXml,
   } = window.manifestUtils || {};
+  const { renderApp } = window.appView || {};
 
   if (!window.manifestUtils) {
     throw new Error("manifest_utils.js must be loaded before app.js");
+  }
+  if (!window.appView) {
+    throw new Error("app_view.js must be loaded before app.js");
   }
 
   // Client-side limits (keep aligned with backend limits)
@@ -190,7 +194,9 @@
         errs.push(`Selected files exceed max total size (${fmtBytes(reqBytes)} > ${fmtBytes(MAX_TOTAL_BYTES)}).`);
       }
 
-      warns.push("Warning: settings.xml may contain secrets (DB credentials, API keys, file paths, server URLs). Upload only what you are comfortable sharing.");
+      warns.push(
+        "We do not make workflows public and take reasonable steps to protect privacy, but we must store the workflow in our database and file system so knime2py can process it. Upload only what you are comfortable sharing."
+      );
 
       setErrors(errs);
       setWarnings(warns);
@@ -291,130 +297,25 @@
       };
     }, [job?.id]);
 
-    const canUpload = stage === "manifest" && manifest && errors.length === 0;
-
-    return html`
-      <div style=${{ fontFamily: "system-ui, -apple-system, Segoe UI, Roboto, sans-serif", padding: "16px", maxWidth: "980px" }}>
-        <h1>k2p-web</h1>
-        <p>Convert a KNIME workflow to Python/Jupyter using knime2py.</p>
-
-        <div style=${{ margin: "12px 0", padding: "12px", border: "1px solid #ddd" }}>
-          <h3>1) Select workflow folder</h3>
-          <input
-            type="file"
-            webkitdirectory="true"
-            directory="true"
-            multiple="true"
-            onChange=${onFolderSelected}
-          />
-          <div style=${{ marginTop: "8px" }}>
-            Selected: <b>${totals.count}</b> files, <b>${fmtBytes(totals.bytes)}</b>
-          </div>
-          <button style=${{ marginTop: "8px" }} onClick=${resetAll}>Reset</button>
-        </div>
-
-        ${warnings.length
-          ? html`<div style=${{ margin: "12px 0", padding: "12px", border: "1px solid #f0c36d" }}>
-              <b>Warnings</b>
-              <ul>${warnings.map((w) => html`<li>${w}</li>`)}</ul>
-            </div>`
-          : null}
-
-        ${errors.length
-          ? html`<div style=${{ margin: "12px 0", padding: "12px", border: "1px solid #d9534f" }}>
-              <b>Errors</b>
-              <ul>${errors.map((e) => html`<li>${e}</li>`)}</ul>
-            </div>`
-          : null}
-
-        <div style=${{ margin: "12px 0", padding: "12px", border: "1px solid #ddd" }}>
-          <h3>2) Manifest (files that will be uploaded)</h3>
-          ${manifest
-            ? html`
-                <div>
-                  Required: <b>${manifest.requiredCount}</b> files, <b>${fmtBytes(manifest.requiredBytes)}</b>
-                </div>
-                <div style=${{ marginTop: "8px" }}>
-                  <button
-                    onClick=${() =>
-                      downloadText(
-                        "manifest.json",
-                        JSON.stringify(
-                          {
-                            ...manifest,
-                            items: manifest.items,
-                          },
-                          null,
-                          2
-                        )
-                      )}
-                  >
-                    Download manifest.json
-                  </button>
-                </div>
-
-                <div style=${{ marginTop: "12px", maxHeight: "260px", overflow: "auto", border: "1px solid #eee" }}>
-                  <table style=${{ width: "100%", borderCollapse: "collapse" }}>
-                    <thead>
-                      <tr>
-                        <th style=${{ textAlign: "left", padding: "6px", borderBottom: "1px solid #eee" }}>path</th>
-                        <th style=${{ textAlign: "left", padding: "6px", borderBottom: "1px solid #eee" }}>present</th>
-                        <th style=${{ textAlign: "left", padding: "6px", borderBottom: "1px solid #eee" }}>size</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      ${manifest.items.map(
-                        (it) => html`
-                          <tr>
-                            <td style=${{ padding: "6px", borderBottom: "1px solid #f5f5f5" }}><code>${it.path}</code></td>
-                            <td style=${{ padding: "6px", borderBottom: "1px solid #f5f5f5" }}>${it.present ? "yes" : "missing"}</td>
-                            <td style=${{ padding: "6px", borderBottom: "1px solid #f5f5f5" }}>${it.present ? fmtBytes(it.size) : ""}</td>
-                          </tr>
-                        `
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              `
-            : html`<div>No manifest yet.</div>`}
-        </div>
-
-        <div style=${{ margin: "12px 0", padding: "12px", border: "1px solid #ddd" }}>
-          <h3>3) Upload ZIP</h3>
-          <button disabled=${!canUpload} onClick=${uploadZip}>
-            ${stage === "uploading" ? "Uploading..." : "Upload"}
-          </button>
-          ${job?.id
-            ? html`<div style=${{ marginTop: "8px" }}>
-                Job: <code>${job.id}</code>
-              </div>`
-            : null}
-        </div>
-
-        <div style=${{ margin: "12px 0", padding: "12px", border: "1px solid #ddd" }}>
-          <h3>Status</h3>
-          ${pollStatus
-            ? html`
-                <div>Status: <b>${pollStatus.status}</b></div>
-                ${pollStatus.status === "SUCCEEDED"
-                  ? html`
-                      <div style=${{ marginTop: "8px" }}>
-                        <a href=${`/api/jobs/${pollStatus.id}/result.zip`}>Download result.zip</a>
-                      </div>
-                    `
-                  : null}
-                ${pollStatus.status === "FAILED"
-                  ? html`
-                      <div style=${{ marginTop: "8px" }}>
-                        <b>Error:</b> ${pollStatus.error_code || ""} ${pollStatus.error_message || ""}
-                      </div>
-                    `
-                  : null}
-              `
-            : html`<div>No job submitted yet.</div>`}
-        </div>
-      </div>
-    `;
+    return renderApp(
+      html,
+      {
+        totals,
+        warnings,
+        errors,
+        manifest,
+        stage,
+        job,
+        pollStatus,
+        fmtBytes,
+      },
+      {
+        onFolderSelected,
+        resetAll,
+        uploadZip,
+        downloadText,
+      }
+    );
   }
 
   const root = ReactDOM.createRoot(document.getElementById("root"));

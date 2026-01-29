@@ -8,6 +8,7 @@
 
     <meta name="description" content="Convert KNIME workflows to Python/Jupyter using knime2py in an isolated container. Upload a minimal workflow bundle, get generated code." />
     <meta name="color-scheme" content="light dark" />
+    <link rel="stylesheet" href="{% static 'ui/app.css' %}">
   </head>
 
   <body>
@@ -30,22 +31,28 @@
       <div class="container">
         <section class="intro">
           <h1>Convert KNIME workflows to Python</h1>
-          <p>
-            Upload a minimal workflow bundle (<code>workflow.knime</code> + per-node <code>settings.xml</code>).
-            The server runs <code>knime2py</code> in an isolated container and returns generated code and graphs.
-          </p>
+          <p>Upload a minimal workflow bundle (<code>workflow.knime</code> + per-node <code>settings.xml</code>).</p>
+          <p>The server runs <code>knime2py</code> in an isolated container and returns generated code and graphs.</p>
         </section>
 
         <!-- Work area (React mounts here) -->
-        <section class="work-area" aria-label="Converter">
-          <div id="root"></div>
-
-          <!-- Optional: no-JS fallback -->
-          <noscript>
-            <div class="noscript">
-              This page requires JavaScript to build the workflow manifest and upload the bundle.
+        <section class="panel" aria-label="Converter">
+          <div class="panel-header">
+            <div class="panel-title">Converter</div>
+            <div class="badges">
+              <span class="badge"><span class="dot knime"></span> KNIME</span>
+              <span class="badge"><span class="dot python"></span> Python</span>
             </div>
-          </noscript>
+          </div>
+          <div class="panel-body">
+            <div id="root"></div>
+
+            <noscript>
+              <div class="card">
+                This page requires JavaScript to build the workflow manifest and upload the bundle.
+              </div>
+            </noscript>
+          </div>
         </section>
 
         <section class="details" aria-label="About">
@@ -93,7 +100,7 @@
 
     <!-- Your app (defer so DOM is ready) -->
     <script defer src="{% static 'ui/manifest_utils.js' %}"></script>
+    <script defer src="{% static 'ui/app_view.js' %}"></script>
     <script defer src="{% static 'ui/app.js' %}"></script>
   </body>
 </html>
-
