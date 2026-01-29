@@ -4,14 +4,86 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <title>k2p-web</title>
+    <title>k2p-web — KNIME → Python</title>
+
+    <meta name="description" content="Convert KNIME workflows to Python/Jupyter using knime2py in an isolated container. Upload a minimal workflow bundle, get generated code." />
+    <meta name="color-scheme" content="light dark" />
   </head>
+
   <body>
-    <div id="root"></div>
+    <header id="site-header">
+      <div class="container">
+        <div class="brand">
+          <span class="brand-title">k2p-web</span>
+          <span class="brand-subtitle">KNIME → Python/Jupyter</span>
+        </div>
+
+        <nav class="nav">
+          <a href="/api/schema/" target="_blank" rel="noreferrer">API schema</a>
+          <a href="/healthz" target="_blank" rel="noreferrer">healthz</a>
+          <a href="/admin/" target="_blank" rel="noreferrer">admin</a>
+        </nav>
+      </div>
+    </header>
+
+    <main id="site-main">
+      <div class="container">
+        <section class="intro">
+          <h1>Convert KNIME workflows to Python</h1>
+          <p>
+            Upload a minimal workflow bundle (<code>workflow.knime</code> + per-node <code>settings.xml</code>).
+            The server runs <code>knime2py</code> in an isolated container and returns generated code and graphs.
+          </p>
+        </section>
+
+        <!-- Work area (React mounts here) -->
+        <section class="work-area" aria-label="Converter">
+          <div id="root"></div>
+
+          <!-- Optional: no-JS fallback -->
+          <noscript>
+            <div class="noscript">
+              This page requires JavaScript to build the workflow manifest and upload the bundle.
+            </div>
+          </noscript>
+        </section>
+
+        <section class="details" aria-label="About">
+          <h2>How it works</h2>
+          <ol>
+            <li>Select a folder that contains <code>workflow.knime</code> in the root.</li>
+            <li>Review the exact file list that will be uploaded (manifest).</li>
+            <li>Upload the bundle as a ZIP and download the results when ready.</li>
+          </ol>
+
+          <h2>Privacy and security note</h2>
+          <p>
+            <code>settings.xml</code> can include secrets (DB credentials, API keys, server URLs, file paths).
+            Always review the manifest before uploading.
+          </p>
+
+          <h2>Outputs</h2>
+          <ul>
+            <li><code>*.py</code> workbook</li>
+            <li><code>*.ipynb</code> notebook</li>
+            <li><code>*.json</code> and <code>*.dot</code> graph exports</li>
+          </ul>
+        </section>
+      </div>
+    </main>
+
+    <footer id="site-footer">
+      <div class="container">
+        <small>
+          k2p-web uses knime2py. KNIME® is a trademark of KNIME AG. This project is not affiliated with KNIME AG.
+        </small>
+      </div>
+    </footer>
 
     <!-- React (UMD, no build step) -->
     <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom-client.production.min.js" crossorigin></script>
 
     <!-- HTM: JSX-like template literals without a build step -->
     <script src="https://unpkg.com/htm@3.1.1/dist/htm.umd.js" crossorigin></script>
@@ -19,8 +91,9 @@
     <!-- JSZip -->
     <script src="https://unpkg.com/jszip@3.10.1/dist/jszip.min.js" crossorigin></script>
 
-    <!-- Your app -->
-    <script src="{% static 'ui/manifest_utils.js' %}"></script>
-    <script src="{% static 'ui/app.js' %}"></script>
+    <!-- Your app (defer so DOM is ready) -->
+    <script defer src="{% static 'ui/manifest_utils.js' %}"></script>
+    <script defer src="{% static 'ui/app.js' %}"></script>
   </body>
 </html>
+
