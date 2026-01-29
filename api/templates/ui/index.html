@@ -6,7 +6,10 @@
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title>k2p-web — KNIME → Python</title>
 
-    <meta name="description" content="Convert KNIME workflows to Python/Jupyter using knime2py in an isolated container. Upload a minimal workflow bundle, get generated code." />
+    <meta
+      name="description"
+      content="Convert KNIME workflows to Python/Jupyter using knime2py in an isolated container. Upload a minimal workflow bundle, get generated code."
+    />
     <meta name="color-scheme" content="light dark" />
     <link rel="stylesheet" href="{% static 'ui/app.css' %}">
   </head>
@@ -32,11 +35,10 @@
         <section class="intro">
           <h1>Convert KNIME workflows to Python</h1>
           <p>Upload a minimal workflow bundle (<code>workflow.knime</code> + per-node <code>settings.xml</code>).</p>
-          <p>No data needed for conversion. Only configuration is uploaded.</p>
+          <p>No data is needed for conversion. Only configuration is uploaded.</p>
           <p>The server runs <code>knime2py</code> in an isolated container and returns generated code and graphs.</p>
         </section>
 
-        <!-- Work area (React mounts here) -->
         <section class="panel" aria-label="Converter">
           <div class="panel-header">
             <div class="panel-title">Converter</div>
@@ -65,7 +67,7 @@
           </ol>
 
           <h2>Privacy and security note</h2>
-          <p>
+          <p class="seo-text">
             <code>settings.xml</code> can include secrets (DB credentials, API keys, server URLs, file paths).
             Always review the manifest before uploading.
           </p>
@@ -75,6 +77,58 @@
             <li><code>*.py</code> workbook</li>
             <li><code>*.ipynb</code> notebook</li>
             <li><code>*.json</code> and <code>*.dot</code> graph exports</li>
+          </ul>
+
+          <h2>About knime2py</h2>
+
+          <p class="seo-text">
+            <strong>knime2py</strong> is a KNIME→Python code generator. It parses a KNIME workflow, reconstructs nodes and connections,
+            and emits runnable Python “workbooks” (script or notebook) by translating supported KNIME nodes into idiomatic pandas and
+            scikit-learn code.
+          </p>
+
+          <p class="seo-text">
+            Alongside executable code, knime2py writes a machine-readable graph (JSON) and a Graphviz DOT file, preserving port wiring
+            and execution order so the generated Python mirrors the original workflow structure.
+          </p>
+
+          <p class="seo-text">
+            The exporter focuses on a single workflow root (the folder containing <code>workflow.knime</code>) and handles components if you
+            point directly to the component’s folder. Unconnected graphs are emitted as separate outputs with stable suffixes
+            (for example <code>__g01</code>, <code>__g02</code>).
+          </p>
+
+          <p class="seo-text">
+            If a node type is not yet supported, knime2py emits a clear placeholder stub so you can see what needs manual work.
+            The generated outputs remain deterministic and traceable back to the original KNIME graph.
+          </p>
+
+          <h2>Documentation</h2>
+          <ul>
+            <li>
+              Main docs:
+              <a href="https://vitalii-kaplan.github.io/knime2py/" target="_blank" rel="noreferrer">
+                vitalii-kaplan.github.io/knime2py
+              </a>
+            </li>
+            <li>
+              Installation:
+              <a href="https://vitalii-kaplan.github.io/knime2py/installation/" target="_blank" rel="noreferrer">
+                /installation
+              </a>
+            </li>
+            <li>
+              Quick start:
+              <a href="https://vitalii-kaplan.github.io/knime2py/quickstart/" target="_blank" rel="noreferrer">
+                /quickstart
+              </a>
+            </li>
+            <li>
+              Releases:
+              <a href="https://github.com/vitalii-kaplan/knime2py/releases" target="_blank" rel="noreferrer">
+                github.com/vitalii-kaplan/knime2py/releases
+              </a>
+            </li>
           </ul>
         </section>
       </div>
@@ -88,18 +142,13 @@
       </div>
     </footer>
 
-    <!-- React (UMD, no build step) -->
     <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom-client.production.min.js" crossorigin></script>
 
-    <!-- HTM: JSX-like template literals without a build step -->
     <script src="https://unpkg.com/htm@3.1.1/dist/htm.umd.js" crossorigin></script>
-
-    <!-- JSZip -->
     <script src="https://unpkg.com/jszip@3.10.1/dist/jszip.min.js" crossorigin></script>
 
-    <!-- Your app (defer so DOM is ready) -->
     <script defer src="{% static 'ui/manifest_utils.js' %}"></script>
     <script defer src="{% static 'ui/app_view.js' %}"></script>
     <script defer src="{% static 'ui/app.js' %}"></script>

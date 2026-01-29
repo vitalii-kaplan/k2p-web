@@ -335,8 +335,19 @@ hr.sep {
   font-size: 1.1rem;
 }
 
+.seo-text {
+  text-align: justify;
+}
+
 #site-footer {
   border-top: 1px solid var(--border);
   padding: 18px 0;
   color: var(--muted);
+}
+
+/* Bigger body text for the 2–3 SEO paragraphs, without adding a new “card” look */
+.details .seo-text {
+  font-size: 1.05rem;
+  line-height: 1.6;
+  margin: 0.75rem 0;
 }
