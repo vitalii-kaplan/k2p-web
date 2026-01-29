@@ -49,9 +49,7 @@ body {
   margin: 0;
   font-family: var(--sans);
   color: var(--text);
-  background: radial-gradient(1200px 600px at 30% 0%, rgba(55,118,171,0.18), transparent 50%),
-              radial-gradient(900px 500px at 80% 10%, rgba(247,210,30,0.14), transparent 45%),
-              var(--bg);
+  background: var(--bg);
   line-height: 1.5;
 }
 
@@ -277,6 +275,11 @@ code, pre {
 
 .app-meta {
   margin-top: 8px;
+  color: var(--muted);
+}
+
+.app-meta-sep {
+  margin: 0 6px;
   color: var(--muted);
 }
 

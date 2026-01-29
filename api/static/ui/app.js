@@ -197,6 +197,9 @@
       warns.push(
         "We do not make workflows public and take reasonable steps to protect privacy, but we must store the workflow in our database and file system so knime2py can process it. Upload only what you are comfortable sharing."
       );
+      warns.push(
+        "knime2py expects KNIME nodes in green (executed) or yellow (ready) state. Red nodes will be converted to placeholder (dummy) code."
+      );
 
       setErrors(errs);
       setWarnings(warns);

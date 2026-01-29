@@ -13,6 +13,8 @@ dependencies = [
   "djangorestframework==3.16.1",
   "PyYAML==6.0.2",
   "psycopg[binary]==3.2.5",
+  "uritemplate==4.1.1",
+  "inflection==0.5.1",
 ]
 
 [project.optional-dependencies]

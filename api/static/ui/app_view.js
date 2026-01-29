@@ -19,8 +19,7 @@ const appView = {
     return html`
       <div class="work-area">
         <div class="app-intro">
-          <h2>k2p-web</h2>
-          <p>Convert a KNIME workflow to Python/Jupyter using knime2py.</p>
+          <p>Convert a KNIME workflow to Python/Jupyter using knime2py</p>
         </div>
 
         <div class="card">
@@ -40,6 +39,7 @@ const appView = {
           </div>
           <div class="app-meta">
             Selected: <b>${totals.count}</b> files, <b>${fmtBytes(totals.bytes)}</b>
+            ${manifest?.rootPrefix ? html`<span class="app-meta-sep">·</span> Folder: ${manifest.rootPrefix}` : null}
           </div>
           <div class="app-meta">
             This step is for selection and review only. Actual upload happens in step 3.
@@ -133,7 +133,7 @@ const appView = {
                 ${pollStatus.status === "SUCCEEDED"
                   ? html`
                       <div class="app-meta">
-                        <a href=${`/api/jobs/${pollStatus.id}/result.zip`}>Download result.zip</a>
+                        <a class="btn" href=${`/api/jobs/${pollStatus.id}/result.zip`}>Download result.zip</a>
                       </div>
                     `
                   : null}
