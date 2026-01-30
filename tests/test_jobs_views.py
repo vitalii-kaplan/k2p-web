@@ -25,7 +25,16 @@ class JobsViewsTests(TestCase):
     def test_create_and_get_job(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             with override_settings(JOB_STORAGE_ROOT=tmpdir):
-                upload = SimpleUploadedFile("discounts.zip", b"zip-bytes", content_type="application/zip")
+                upload = SimpleUploadedFile(
+                    "discounts.zip",
+                    self._make_zip(
+                        {
+                            "workflow.knime": "<root></root>",
+                            "CSV Reader (#1)/settings.xml": "<settings></settings>",
+                        }
+                    ),
+                    content_type="application/zip",
+                )
                 resp = self.client.post("/api/jobs", data={"bundle": upload}, format="multipart")
 
         self.assertEqual(resp.status_code, 201)
@@ -40,7 +49,16 @@ class JobsViewsTests(TestCase):
         Job.objects.create(status=Job.Status.QUEUED)
         with tempfile.TemporaryDirectory() as tmpdir:
             with override_settings(JOB_STORAGE_ROOT=tmpdir, MAX_QUEUED_JOBS=1):
-                upload = SimpleUploadedFile("discounts.zip", b"zip-bytes", content_type="application/zip")
+                upload = SimpleUploadedFile(
+                    "discounts.zip",
+                    self._make_zip(
+                        {
+                            "workflow.knime": "<root></root>",
+                            "CSV Reader (#1)/settings.xml": "<settings></settings>",
+                        }
+                    ),
+                    content_type="application/zip",
+                )
                 resp = self.client.post("/api/jobs", data={"bundle": upload}, format="multipart")
 
         self.assertEqual(resp.status_code, 429)
@@ -95,3 +113,10 @@ class JobsViewsTests(TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(resp.data["stdout_tail"], "hello")
         self.assertEqual(resp.data["stderr_tail"], "boom")
+
+    def _make_zip(self, files: dict[str, str]) -> bytes:
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+            for name, content in files.items():
+                zf.writestr(name, content)
+        return buf.getvalue()

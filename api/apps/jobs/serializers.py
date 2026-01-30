@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import hashlib
+import zipfile
+import xml.etree.ElementTree as ET
 import re
 from pathlib import Path
 from typing import Any
@@ -58,6 +60,25 @@ class JobCreateSerializer(serializers.Serializer):
             for chunk in f.chunks(chunk_size=1024 * 1024):
                 hasher.update(chunk)
                 dst.write(chunk)
+
+        # Validate XML files inside the zip
+        try:
+            with zipfile.ZipFile(full_path, "r") as zf:
+                for name in zf.namelist():
+                    if not name.lower().endswith(".xml") and not name.lower().endswith("workflow.knime"):
+                        continue
+                    try:
+                        data = zf.read(name)
+                        ET.fromstring(data)
+                    except ET.ParseError as exc:
+                        raise serializers.ValidationError(f"Invalid XML in {name}.") from exc
+        except (zipfile.BadZipFile, serializers.ValidationError) as exc:
+            # cleanup on invalid archive or XML
+            full_path.unlink(missing_ok=True)
+            job.delete()
+            if isinstance(exc, zipfile.BadZipFile):
+                raise serializers.ValidationError("Uploaded file is not a valid ZIP archive.") from exc
+            raise
 
         job.input_key = rel_key  # storage key; not an absolute path
         job.input_sha256 = hasher.hexdigest()
