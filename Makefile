@@ -1,4 +1,4 @@
-.PHONY: help dev server worker test test-ui lint fmt migrate makemigrations shell reset-db kind-up kind-down venv
+.PHONY: help dev server worker test test-ui lint fmt migrate makemigrations shell reset-db kind-up kind-down venv release-docker
 
 PYTHON ?= python
 MANAGE := $(PYTHON) api/manage.py
@@ -19,6 +19,7 @@ help:
 	@echo "  kind-up       Create local kind cluster (if kind installed)"
 	@echo "  kind-down     Delete local kind cluster"
 	@echo "  venv          Print activate command for local venv"
+	@echo "  release-docker Build local Docker image"
 
 dev:
 	@echo "Run in two terminals:"
@@ -64,3 +65,6 @@ kind-down:
 
 venv:
 	@echo "Run: source .venv/bin/activate"
+
+release-docker:
+	docker build -t k2p-web:local .

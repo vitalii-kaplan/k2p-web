@@ -5,7 +5,9 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-COPY pyproject.toml /app/pyproject.toml
+# Copy project files needed for packaging
+COPY pyproject.toml README.md /app/
+COPY api /app/api
 
 RUN pip install --no-cache-dir --upgrade pip \
     && pip install --no-cache-dir .
