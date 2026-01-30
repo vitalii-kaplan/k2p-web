@@ -10,7 +10,7 @@ from typing import Any
 from django.conf import settings
 from rest_framework import serializers
 
-from .models import Job
+from .models import Job, JobSettingsMeta
 
 
 class JobCreateSerializer(serializers.Serializer):
@@ -79,6 +79,37 @@ class JobCreateSerializer(serializers.Serializer):
             if isinstance(exc, zipfile.BadZipFile):
                 raise serializers.ValidationError("Uploaded file is not a valid ZIP archive.") from exc
             raise
+
+        # Extract settings.xml metadata and store per-file rows.
+        with zipfile.ZipFile(full_path, "r") as zf:
+            for name in zf.namelist():
+                if not name.lower().endswith("settings.xml"):
+                    continue
+                factory = node_name = display_name = None
+                try:
+                    data = zf.read(name)
+                    root = ET.fromstring(data)
+                    for entry in root.iter():
+                        if not entry.tag.endswith("entry"):
+                            continue
+                        key = entry.attrib.get("key")
+                        if key == "factory":
+                            factory = entry.attrib.get("value")
+                        elif key == "node-name":
+                            node_name = entry.attrib.get("value")
+                        elif key == "name":
+                            display_name = entry.attrib.get("value")
+                except ET.ParseError:
+                    # Invalid XML already validated above; skip metadata on parse error.
+                    pass
+
+                JobSettingsMeta.objects.create(
+                    job=job,
+                    file_name=name,
+                    factory=factory,
+                    node_name=node_name,
+                    name=display_name,
+                )
 
         job.input_key = rel_key  # storage key; not an absolute path
         job.input_sha256 = hasher.hexdigest()

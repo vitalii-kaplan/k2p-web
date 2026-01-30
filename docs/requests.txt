@@ -1,0 +1,4 @@
+select Name, count(Name) as count 
+from jobs_jobsettingsmeta
+group by Name 
+order by count desc;

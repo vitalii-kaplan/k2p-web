@@ -1,0 +1,41 @@
+{% extends "admin/base_site.html" %}
+{% load static %}
+
+{% block content %}
+  <h1>SQL Console (Read-only)</h1>
+
+  {% if error %}
+    <p style="color: #ba2121;"><strong>Error:</strong> {{ error }}</p>
+  {% endif %}
+
+  <form method="post" style="margin-bottom: 16px;">
+    {% csrf_token %}
+    <div style="margin-bottom: 8px;">
+      <textarea name="query" rows="8" style="width: 100%; font-family: monospace;">{{ query }}</textarea>
+    </div>
+    <button type="submit" class="default">Run</button>
+    <button type="submit" name="download" value="1">Run & Download CSV</button>
+  </form>
+
+  {% if columns %}
+    <h2>Results</h2>
+    <table class="adminlist">
+      <thead>
+        <tr>
+          {% for c in columns %}
+            <th>{{ c }}</th>
+          {% endfor %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in rows %}
+          <tr>
+            {% for val in row %}
+              <td>{{ val }}</td>
+            {% endfor %}
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% endif %}
+{% endblock %}

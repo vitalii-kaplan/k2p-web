@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import tempfile
+from pathlib import Path
 import zipfile
 from io import BytesIO
 
@@ -8,6 +9,7 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase, override_settings
 from rest_framework import serializers
 
+from apps.jobs.models import JobSettingsMeta
 from apps.jobs.serializers import JobCreateSerializer
 
 
@@ -38,7 +40,13 @@ class JobCreateSerializerTests(TestCase):
             file_data = self._make_zip(
                 {
                     "workflow.knime": "<root></root>",
-                    "CSV Reader (#1)/settings.xml": "<settings></settings>",
+                    "CSV Reader (#1)/settings.xml": (
+                        "<config>"
+                        '<entry key="factory" type="xstring" value="org.knime.Factory"/>'
+                        '<entry key="node-name" type="xstring" value="CSV Reader"/>'
+                        '<entry key="name" type="xstring" value="CSV Reader"/>'
+                        "</config>"
+                    ),
                 }
             )
             upload = SimpleUploadedFile("discounts.zip", file_data, content_type="application/zip")
@@ -51,6 +59,35 @@ class JobCreateSerializerTests(TestCase):
 
         self.assertTrue(job.input_key.startswith(f"jobs/{job.id}/"))
         self.assertTrue(job.input_key.endswith("/discounts.zip"))
+        meta = JobSettingsMeta.objects.get(job=job)
+        self.assertEqual(meta.file_name, "CSV Reader (#1)/settings.xml")
+        self.assertEqual(meta.factory, "org.knime.Factory")
+        self.assertEqual(meta.node_name, "CSV Reader")
+        self.assertEqual(meta.name, "CSV Reader")
+
+    def test_settings_meta_parsed_from_fixture(self) -> None:
+        xml_text = (Path(__file__).resolve().parents[0] / "data" / "settings_meta" / "settings.xml").read_text(
+            encoding="utf-8"
+        )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            file_data = self._make_zip(
+                {
+                    "workflow.knime": "<root></root>",
+                    "settings.xml": xml_text,
+                }
+            )
+            upload = SimpleUploadedFile("meta.zip", file_data, content_type="application/zip")
+
+            ser = JobCreateSerializer(data={"bundle": upload})
+            self.assertTrue(ser.is_valid(), ser.errors)
+
+            with override_settings(JOB_STORAGE_ROOT=tmpdir):
+                job = ser.save()
+
+        meta = JobSettingsMeta.objects.get(job=job, file_name="settings.xml")
+        self.assertEqual(meta.factory, "org.knime.base.node.meta.xvalidation.XValidatePartitionerFactory")
+        self.assertEqual(meta.node_name, "X-Partitioner")
+        self.assertEqual(meta.name, "X-Partitioner")
 
     def test_create_rejects_invalid_xml_in_zip(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
