@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import tempfile
 from pathlib import Path
+from unittest.mock import patch
 import zipfile
 from io import BytesIO
 
@@ -55,7 +56,8 @@ class JobCreateSerializerTests(TestCase):
             self.assertTrue(ser.is_valid(), ser.errors)
 
             with override_settings(JOB_STORAGE_ROOT=tmpdir):
-                job = ser.save()
+                with patch("apps.jobs.serializers.logger") as logger:
+                    job = ser.save()
 
         self.assertTrue(job.input_key.startswith(f"jobs/{job.id}/"))
         self.assertTrue(job.input_key.endswith("/discounts.zip"))
@@ -64,6 +66,9 @@ class JobCreateSerializerTests(TestCase):
         self.assertEqual(meta.factory, "org.knime.Factory")
         self.assertEqual(meta.node_name, "CSV Reader")
         self.assertEqual(meta.name, "CSV Reader")
+        logger.info.assert_called()
+        payload = logger.info.call_args[0][0]
+        self.assertIn('"event": "job_created"', payload)
 
     def test_settings_meta_parsed_from_fixture(self) -> None:
         xml_text = (Path(__file__).resolve().parents[0] / "data" / "settings_meta" / "settings.xml").read_text(
