@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+import logging
 import time
 from pathlib import Path
 
@@ -17,6 +19,7 @@ from apps.jobs.k8s import (
 )
 from apps.jobs.models import Job
 
+logger = logging.getLogger("k2p.worker")
 
 class Command(BaseCommand):
     help = "Async dispatcher/reconciler: submits QUEUED jobs to k8s and updates RUNNING jobs."
@@ -49,6 +52,15 @@ class Command(BaseCommand):
             if not job:
                 return
 
+            logger.info(
+                json.dumps(
+                    {
+                        "event": "job_picked",
+                        "job_id": str(job.id),
+                    }
+                )
+            )
+
             job_name = normalize_job_name(str(job.id))
             job.k8s_namespace = ns
             job.k8s_job_name = job_name
@@ -73,6 +85,17 @@ class Command(BaseCommand):
         )
 
         ok, _stdout, stderr = kubectl_apply_yaml(manifest)
+        if ok:
+            logger.info(
+                json.dumps(
+                    {
+                        "event": "k8s_job_created",
+                        "job_id": str(job.id),
+                        "k8s_job_name": job.k8s_job_name,
+                        "k8s_namespace": job.k8s_namespace,
+                    }
+                )
+            )
         if not ok:
             Job.objects.filter(id=job.id).update(
                 status=Job.Status.FAILED,
@@ -102,4 +125,19 @@ class Command(BaseCommand):
                 result_key=result_key,
                 error_code="" if state == "SUCCEEDED" else "k8s_job_failed",
                 error_message="" if state == "SUCCEEDED" else "Kubernetes Job failed (check cluster logs).",
+            )
+            finished_at = timezone.now()
+            duration_s = None
+            if j.started_at:
+                duration_s = (finished_at - j.started_at).total_seconds()
+            logger.info(
+                json.dumps(
+                    {
+                        "event": "job_finished",
+                        "job_id": str(j.id),
+                        "status": state,
+                        "duration_seconds": duration_s,
+                        "error_code": "" if state == "SUCCEEDED" else "k8s_job_failed",
+                    }
+                )
             )

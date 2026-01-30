@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import hashlib
+import json
+import logging
 import zipfile
 import xml.etree.ElementTree as ET
 import re
@@ -12,6 +14,7 @@ from rest_framework import serializers
 
 from .models import Job, JobSettingsMeta
 
+logger = logging.getLogger("k2p.jobs")
 
 class JobCreateSerializer(serializers.Serializer):
     bundle = serializers.FileField()
@@ -114,6 +117,17 @@ class JobCreateSerializer(serializers.Serializer):
         job.input_key = rel_key  # storage key; not an absolute path
         job.input_sha256 = hasher.hexdigest()
         job.save(update_fields=["input_key", "input_sha256"])
+
+        logger.info(
+            json.dumps(
+                {
+                    "event": "job_created",
+                    "job_id": str(job.id),
+                    "input_size": job.input_size,
+                    "input_sha256_prefix": (job.input_sha256 or "")[:12],
+                }
+            )
+        )
 
         return job
 
