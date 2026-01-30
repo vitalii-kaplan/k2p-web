@@ -16,4 +16,5 @@ COPY . /app
 
 EXPOSE 8000
 
-CMD ["python", "api/manage.py", "runserver", "0.0.0.0:8000"]
+CMD ["gunicorn", "--chdir", "api", "k2pweb.wsgi:application", "--bind", "0.0.0.0:8000", "--workers", "2", "--threads", "4", "--timeout", "60"]
+
