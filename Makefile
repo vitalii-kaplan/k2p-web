@@ -1,3 +1,10 @@
+#************************************************************************#
+# make docker-dev-up
+# make docker-api-logs
+# make docker-worker-logs
+# make docker-dev-down 
+#************************************************************************#
+
 .PHONY: help dev server worker test test-py test-ui lint fmt \
         migrate makemigrations shell reset-db \
         kind-up kind-down kubeconfig-kind \
@@ -6,6 +13,12 @@
         docker-migrate \
         docker-worker-up docker-worker-down docker-worker-logs docker-worker-shell \
         docker-dev-up docker-dev-down venv tag-release
+
+# Load .env into Make variables (and export them to subcommands), if present.
+ifneq (,$(wildcard .env))
+  include .env
+  export
+endif
 
 PYTHON ?= python
 MANAGE := $(PYTHON) api/manage.py
@@ -63,6 +76,9 @@ help:
 # -----------------------
 # Local (from source)
 # -----------------------
+
+print-%:
+	@echo '$*=$($*)'
 
 dev:
 	@echo "Run in two terminals:"
