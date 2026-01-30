@@ -1,0 +1,13 @@
+.git
+.github
+.venv
+.pytest_cache
+.coverage
+__pycache__/
+node_modules
+tests
+docs
+var
+coverage.xml
+package-lock.json
+package.json
