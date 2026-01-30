@@ -1,9 +1,11 @@
 .PHONY: help dev server worker test test-py test-ui lint fmt \
         migrate makemigrations shell reset-db \
         kind-up kind-down kubeconfig-kind \
-        docker-build docker-pull docker-api-up docker-api-down docker-api-logs \
-        docker-migrate docker-worker-up docker-worker-down docker-worker-logs \
-        docker-dev-up docker-dev-down venv
+        docker-build docker-pull docker-ps \
+        docker-api-up docker-api-down docker-api-logs docker-api-shell \
+        docker-migrate \
+        docker-worker-up docker-worker-down docker-worker-logs docker-worker-shell \
+        docker-dev-up docker-dev-down venv tag-release
 
 PYTHON ?= python
 MANAGE := $(PYTHON) api/manage.py
@@ -30,7 +32,7 @@ help:
 	@echo "  make worker            Run k2p worker loop"
 	@echo "  make test-py           Run pytest (python only)"
 	@echo "  make test-ui           Run UI unit tests (requires npm)"
-	@echo "  make test              Run all tests"
+	@echo "  make test              Run all tests (UI tests only if npm+package.json exist)"
 	@echo "  make lint              Run ruff"
 	@echo "  make fmt               Run ruff format"
 	@echo "  make migrate           Apply migrations"
@@ -45,6 +47,7 @@ help:
 	@echo "Docker (run from image; closer to production):"
 	@echo "  make docker-build      Build local image ($(IMAGE))"
 	@echo "  make docker-pull       Pull image ($(IMAGE))"
+	@echo "  make docker-ps         Show API/worker containers"
 	@echo "  make docker-migrate    Run migrations inside image"
 	@echo "  make docker-api-up     Start API container from image"
 	@echo "  make docker-worker-up  Start worker container from image (talks to kind)"
@@ -53,6 +56,9 @@ help:
 	@echo ""
 	@echo "venv:"
 	@echo "  make venv              Print activate command"
+	@echo ""
+	@echo "Release:"
+	@echo "  make tag-release VERSION=v0.1.1"
 
 # -----------------------
 # Local (from source)
@@ -69,7 +75,13 @@ server:
 worker:
 	$(MANAGE) k2p_worker
 
-test: test-py test-ui
+test: test-py
+	@if command -v npm >/dev/null 2>&1 && [ -f package.json ]; then \
+		echo "Running UI tests..."; \
+		npm run test:ui; \
+	else \
+		echo "Skipping UI tests (npm/package.json not found)."; \
+	fi
 
 test-py:
 	$(PYTHON) -m pytest
@@ -104,6 +116,11 @@ kind-down:
 venv:
 	@echo "Run: source .venv/bin/activate"
 
+tag-release:
+	@if [ -z "$(VERSION)" ]; then echo "VERSION is required (e.g., VERSION=v0.1.1)"; exit 1; fi
+	git tag -a $(VERSION) -m "Release $(VERSION)"
+	git push origin $(VERSION)
+
 # -----------------------
 # Docker (run from image)
 # -----------------------
@@ -113,6 +130,9 @@ docker-build:
 
 docker-pull:
 	docker pull $(IMAGE)
+
+docker-ps:
+	@docker ps --filter "name=$(API_NAME)" --filter "name=$(WORKER_NAME)" --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
 
 docker-migrate:
 	docker run --rm \
@@ -139,6 +159,9 @@ docker-api-down:
 docker-api-logs:
 	docker logs -f $(API_NAME)
 
+docker-api-shell:
+	docker exec -it $(API_NAME) /bin/sh
+
 kubeconfig-kind:
 	./scripts/kubeconfig-kind.sh "$(KIND_CLUSTER)" "$(KUBECONFIG_KIND)"
 
@@ -160,6 +183,9 @@ docker-worker-down:
 
 docker-worker-logs:
 	docker logs -f $(WORKER_NAME)
+
+docker-worker-shell:
+	docker exec -it $(WORKER_NAME) /bin/sh
 
 docker-dev-up: kind-up docker-build docker-migrate docker-api-up docker-worker-up
 
