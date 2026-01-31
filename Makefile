@@ -22,7 +22,11 @@ ifneq (,$(wildcard .env))
   export
 endif
 
-PYTHON ?= python
+ifneq (,$(wildcard .venv/bin/python))
+  PYTHON ?= .venv/bin/python
+else
+  PYTHON ?= python
+endif
 MANAGE := $(PYTHON) api/manage.py
 
 # ---- Docker / "simulate prod" knobs ----

@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+import os
+import sys
+
+from django.conf import settings
 from django.db.models import Count, Max
 from prometheus_client import Counter, REGISTRY
 from prometheus_client.core import GaugeMetricFamily
@@ -56,6 +60,12 @@ class JobsDbMetricsCollector:
         yield last_finished_metric
 
 
-if not getattr(REGISTRY, "_k2p_jobs_db_collector_registered", False):
+_RUNNING_PYTEST = (
+    settings.IS_PYTEST
+    or "PYTEST_CURRENT_TEST" in os.environ
+    or "pytest" in sys.modules
+)
+
+if not _RUNNING_PYTEST and not getattr(REGISTRY, "_k2p_jobs_db_collector_registered", False):
     REGISTRY.register(JobsDbMetricsCollector())
     setattr(REGISTRY, "_k2p_jobs_db_collector_registered", True)
