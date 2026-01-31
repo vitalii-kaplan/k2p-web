@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import time
+from prometheus_client import start_http_server
 from pathlib import Path
 
 from django.conf import settings
@@ -18,6 +20,20 @@ from apps.jobs.k8s import (
     render_job_manifest,
 )
 from apps.jobs.models import Job
+from apps.jobs.metrics import (
+    JOB_DURATION_SECONDS,
+    JOB_END_TO_END_SECONDS,
+    JOB_FINISHED_TOTAL,
+    JOB_QUEUE_DEPTH,
+    JOB_QUEUE_WAIT_SECONDS,
+    JOB_RUN_SECONDS,
+    K2P_ERROR_TOTAL,
+    K2P_EXIT_CODE_TOTAL,
+    K8S_JOB_START_LATENCY_SECONDS,
+    KUBECTL_FAILURES_TOTAL,
+    WORKER_ERRORS_TOTAL,
+    WORKER_HEARTBEAT_TIMESTAMP_SECONDS,
+)
 
 logger = logging.getLogger("k2p.worker")
 
@@ -32,10 +48,20 @@ class Command(BaseCommand):
         ns = getattr(settings, "K8S_NAMESPACE", "k2p")
         image = getattr(settings, "K2P_IMAGE", "ghcr.io/vitalii-kaplan/knime2py:main")
 
+        # Expose worker metrics
+        addr = os.environ.get("WORKER_METRICS_ADDR", "0.0.0.0")
+        port = int(os.environ.get("WORKER_METRICS_PORT", "8001"))
+        start_http_server(port, addr=addr)
+
         try:
             while True:
-                self._submit_one(ns=ns, image=image)
-                self._reconcile_running(ns=ns)
+                try:
+                    self._submit_one(ns=ns, image=image)
+                    self._reconcile_running(ns=ns)
+                    WORKER_HEARTBEAT_TIMESTAMP_SECONDS.set(time.time())
+                except Exception:  # noqa: BLE001
+                    WORKER_ERRORS_TOTAL.inc()
+                    raise
                 time.sleep(sleep_s)
         except KeyboardInterrupt:
             self.stdout.write(self.style.WARNING("Worker stopped."))
@@ -68,6 +94,10 @@ class Command(BaseCommand):
             job.started_at = timezone.now()
             job.save(update_fields=["k8s_namespace", "k8s_job_name", "status", "started_at"])
 
+        if job.created_at and job.started_at:
+            JOB_QUEUE_WAIT_SECONDS.observe((job.started_at - job.created_at).total_seconds())
+
+        JOB_QUEUE_DEPTH.set(Job.objects.filter(status=Job.Status.QUEUED).count())
         # Map repo paths into kind node mount (/repo/...)
         # input_key is e.g. jobs/<uuid>/<stem>.zip stored under JOB_STORAGE_ROOT
         in_host = Path(settings.JOB_STORAGE_ROOT) / job.input_key
@@ -84,7 +114,9 @@ class Command(BaseCommand):
             out_host_dir=f"/repo/{out_dir.relative_to(settings.REPO_ROOT)}",
         )
 
+        submit_started = time.time()
         ok, _stdout, stderr = kubectl_apply_yaml(manifest)
+        K8S_JOB_START_LATENCY_SECONDS.observe(time.time() - submit_started)
         if ok:
             logger.info(
                 json.dumps(
@@ -97,6 +129,7 @@ class Command(BaseCommand):
                 )
             )
         if not ok:
+            KUBECTL_FAILURES_TOTAL.inc()
             Job.objects.filter(id=job.id).update(
                 status=Job.Status.FAILED,
                 finished_at=timezone.now(),
@@ -130,6 +163,16 @@ class Command(BaseCommand):
             duration_s = None
             if j.started_at:
                 duration_s = (finished_at - j.started_at).total_seconds()
+                JOB_DURATION_SECONDS.observe(duration_s)
+                JOB_RUN_SECONDS.observe(duration_s)
+            if j.created_at:
+                JOB_END_TO_END_SECONDS.observe((finished_at - j.created_at).total_seconds())
+            JOB_FINISHED_TOTAL.labels(status=state).inc()
+            JOB_QUEUE_DEPTH.set(Job.objects.filter(status=Job.Status.QUEUED).count())
+            if exit_code is not None:
+                K2P_EXIT_CODE_TOTAL.labels(exit_code=str(exit_code)).inc()
+            if state != "SUCCEEDED":
+                K2P_ERROR_TOTAL.inc()
             logger.info(
                 json.dumps(
                     {

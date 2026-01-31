@@ -9,6 +9,7 @@ from apps.core.health import healthz, readyz
 from apps.core.admin_views import sql_console
 
 urlpatterns = [
+    path("", include("django_prometheus.urls")),
     # UI
     path("", TemplateView.as_view(template_name="ui/index.html"), name="ui-index"),
 

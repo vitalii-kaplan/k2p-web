@@ -13,6 +13,7 @@ from django.conf import settings
 from rest_framework import serializers
 
 from .models import Job, JobSettingsMeta
+from .metrics import JOB_CREATED_TOTAL
 
 logger = logging.getLogger("k2p.jobs")
 
@@ -118,6 +119,7 @@ class JobCreateSerializer(serializers.Serializer):
         job.input_sha256 = hasher.hexdigest()
         job.save(update_fields=["input_key", "input_sha256"])
 
+        JOB_CREATED_TOTAL.inc()
         logger.info(
             json.dumps(
                 {
