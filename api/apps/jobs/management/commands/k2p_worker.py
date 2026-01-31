@@ -12,6 +12,7 @@ from django.core.management.base import BaseCommand
 from django.db import transaction
 from django.utils import timezone
 
+from apps.core.db_logging import log_db_settings
 from apps.jobs.k8s import (
     kubectl_apply_yaml,
     kubectl_get_job,
@@ -20,11 +21,10 @@ from apps.jobs.k8s import (
     render_job_manifest,
 )
 from apps.jobs.models import Job
-from apps.jobs.metrics import (
+from apps.jobs.metrics_worker import (
     JOB_DURATION_SECONDS,
     JOB_END_TO_END_SECONDS,
     JOB_FINISHED_TOTAL,
-    JOB_QUEUE_DEPTH,
     JOB_QUEUE_WAIT_SECONDS,
     JOB_RUN_SECONDS,
     K2P_ERROR_TOTAL,
@@ -52,6 +52,7 @@ class Command(BaseCommand):
         addr = os.environ.get("WORKER_METRICS_ADDR", "0.0.0.0")
         port = int(os.environ.get("WORKER_METRICS_PORT", "8001"))
         start_http_server(port, addr=addr)
+        log_db_settings(logger, event="worker_db_settings")
 
         try:
             while True:
@@ -97,7 +98,6 @@ class Command(BaseCommand):
         if job.created_at and job.started_at:
             JOB_QUEUE_WAIT_SECONDS.observe((job.started_at - job.created_at).total_seconds())
 
-        JOB_QUEUE_DEPTH.set(Job.objects.filter(status=Job.Status.QUEUED).count())
         # Map repo paths into kind node mount (/repo/...)
         # input_key is e.g. jobs/<uuid>/<stem>.zip stored under JOB_STORAGE_ROOT
         in_host = Path(settings.JOB_STORAGE_ROOT) / job.input_key
@@ -168,7 +168,6 @@ class Command(BaseCommand):
             if j.created_at:
                 JOB_END_TO_END_SECONDS.observe((finished_at - j.created_at).total_seconds())
             JOB_FINISHED_TOTAL.labels(status=state).inc()
-            JOB_QUEUE_DEPTH.set(Job.objects.filter(status=Job.Status.QUEUED).count())
             if exit_code is not None:
                 K2P_EXIT_CODE_TOTAL.labels(exit_code=str(exit_code)).inc()
             if state != "SUCCEEDED":

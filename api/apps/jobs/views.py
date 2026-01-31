@@ -14,7 +14,7 @@ from rest_framework.views import APIView
 
 from .models import Job
 from .serializers import JobCreateSerializer, JobSerializer
-from .metrics import ENQUEUE_REJECTED_TOTAL, JOB_QUEUE_DEPTH
+from .metrics_api import ENQUEUE_REJECTED_TOTAL
 
 
 class JobsCreateView(APIView):
@@ -22,7 +22,6 @@ class JobsCreateView(APIView):
 
     def post(self, request):
         queued_count = Job.objects.filter(status=Job.Status.QUEUED).count()
-        JOB_QUEUE_DEPTH.set(queued_count)
         max_queued = getattr(settings, "MAX_QUEUED_JOBS", 50)
         if max_queued >= 0 and queued_count >= max_queued:
             ENQUEUE_REJECTED_TOTAL.inc()

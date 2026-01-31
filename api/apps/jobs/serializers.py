@@ -13,7 +13,7 @@ from django.conf import settings
 from rest_framework import serializers
 
 from .models import Job, JobSettingsMeta
-from .metrics import JOB_CREATED_TOTAL
+from .metrics_api import JOB_CREATED_TOTAL
 
 logger = logging.getLogger("k2p.jobs")
 

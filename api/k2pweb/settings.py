@@ -95,6 +95,18 @@ MIDDLEWARE = [
     "django_prometheus.middleware.PrometheusAfterMiddleware",
 ]
 
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "handlers": {
+        "console": {"class": "logging.StreamHandler"},
+    },
+    "loggers": {
+        "k2p.api": {"handlers": ["console"], "level": "INFO"},
+        "k2p.worker": {"handlers": ["console"], "level": "INFO"},
+    },
+}
+
 TEMPLATES = [
     {
         "BACKEND": "django.template.backends.django.DjangoTemplates",
@@ -131,7 +143,14 @@ if DB_ENGINE == "postgres":
 else:
     sqlite_path = resolve_under_repo(os.environ.get("SQLITE_PATH", "var/db.sqlite3"))
     sqlite_path.parent.mkdir(parents=True, exist_ok=True)
-    DATABASES = {"default": {"ENGINE": "django.db.backends.sqlite3", "NAME": str(sqlite_path)}}
+    DATABASES = {
+        "default": {
+            "ENGINE": "django.db.backends.sqlite3",
+            "NAME": str(sqlite_path),
+            # Reduce "database is locked" errors under concurrent access.
+            "OPTIONS": {"timeout": 30},
+        }
+    }
 
 # -----------------------------------------------------------------------------
 # Static / storage

@@ -3,11 +3,6 @@ from __future__ import annotations
 from prometheus_client import Counter, Gauge, Histogram
 
 
-JOB_CREATED_TOTAL = Counter(
-    "k2p_job_created_total",
-    "Total number of jobs created",
-)
-
 JOB_FINISHED_TOTAL = Counter(
     "k2p_job_finished_total",
     "Total number of jobs finished",
@@ -20,17 +15,6 @@ JOB_DURATION_SECONDS = Histogram(
     buckets=(1, 5, 10, 30, 60, 120, 300, 600, 1800, 3600),
 )
 
-JOB_QUEUE_DEPTH = Gauge(
-    "k2p_job_queue_depth",
-    "Number of jobs in QUEUED state",
-)
-
-ENQUEUE_REJECTED_TOTAL = Counter(
-    "k2p_enqueue_rejected_total",
-    "Total number of job enqueue rejections",
-)
-
-# Worker-specific metrics (served from worker /metrics endpoint)
 JOB_QUEUE_WAIT_SECONDS = Histogram(
     "k2p_job_queue_wait_seconds",
     "Time from job creation to worker pickup/start (seconds)",
