@@ -4,7 +4,7 @@ set -euo pipefail
 # ----------------------------
 # Config (env overrides)
 # ----------------------------
-COMPOSE_FILE="${COMPOSE_FILE:-docker-compose.yml}"
+COMPOSE_FILE="${COMPOSE_FILE:-docker-compose-local.yml}"
 API_URL="${API_URL:-http://127.0.0.1:8000}"
 
 WIPE_VOLUMES="${WIPE_VOLUMES:-0}"         # 1 => docker compose down -v
