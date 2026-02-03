@@ -1,0 +1,36 @@
+name: prod-compose-check
+
+on:
+  push:
+
+jobs:
+  prod-compose-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create CI .env
+        run: |
+          cat > .env <<'EOF'
+          DJANGO_DEBUG=0
+          DJANGO_SECRET_KEY=ci-secret-not-for-prod
+          DJANGO_ALLOWED_HOSTS=127.0.0.1,localhost
+          CSRF_TRUSTED_ORIGINS=http://127.0.0.1:8000,http://localhost:8000
+          DB_ENGINE=postgres
+          DB_NAME=k2pweb
+          DB_USER=k2pweb
+          DB_PASSWORD=k2pweb_password
+          DB_HOST=postgres
+          DB_PORT=5432
+          EOF
+
+      - name: Run production compose readiness check
+        run: |
+          chmod +x ./scripts/prod-ready-check.sh
+          COMPOSE_FILE=docker-compose.prod.nginx.yml START_WORKER=0 ./scripts/prod-ready-check.sh
+
+      - name: Show compose logs on failure
+        if: failure()
+        run: docker compose -f docker-compose.prod.nginx.yml logs --tail=200 || true
