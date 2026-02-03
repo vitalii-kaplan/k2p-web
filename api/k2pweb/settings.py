@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import sys
 from pathlib import Path
 
 API_DIR = Path(__file__).resolve().parent.parent  # .../api
@@ -39,7 +40,7 @@ def resolve_under_repo(p: str) -> Path:
 # Core settings
 # -----------------------------------------------------------------------------
 
-IS_PYTEST = "PYTEST_CURRENT_TEST" in os.environ
+IS_PYTEST = "PYTEST_CURRENT_TEST" in os.environ or "pytest" in sys.modules
 
 # Prefer DJANGO_DEBUG; accept DEBUG for backwards compatibility
 DEBUG = env_bool("DJANGO_DEBUG", env_bool("DEBUG", False)) or IS_PYTEST
@@ -128,6 +129,9 @@ TEMPLATES = [
 # -----------------------------------------------------------------------------
 
 DB_ENGINE = os.environ.get("DB_ENGINE", "sqlite").strip().lower()
+if IS_PYTEST:
+    # Keep tests self-contained and avoid relying on external DB hosts from .env.
+    DB_ENGINE = "sqlite"
 
 if DB_ENGINE == "postgres":
     DATABASES = {

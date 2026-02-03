@@ -37,6 +37,7 @@ API_NAME ?= k2pweb-api
 WORKER_NAME ?= k2pweb-worker
 PORT ?= 8000
 WORKER_METRICS_PORT ?= 8001
+DOCKER_DB_ENGINE ?= sqlite
 
 # For kind connectivity from inside a container:
 KIND_CLUSTER ?= k2p
@@ -129,6 +130,7 @@ docker-ps: ## Show API/worker containers
 docker-migrate: ## Run migrations inside image
 	docker run --rm \
 	  --env-file $(ENV_FILE) \
+	  -e DB_ENGINE=$(DOCKER_DB_ENGINE) \
 	  -e REPO_ROOT=$(REPO_MOUNT) \
 	  -v "$(PWD):$(REPO_MOUNT)" \
 	  $(IMAGE) \
@@ -138,11 +140,12 @@ docker-api-up: ## Start API container from image
 	@docker rm -f $(API_NAME) >/dev/null 2>&1 || true
 	docker run -d --name $(API_NAME) \
 	  --env-file $(ENV_FILE) \
+	  -e DB_ENGINE=$(DOCKER_DB_ENGINE) \
 	  -e REPO_ROOT=$(REPO_MOUNT) \
 	  -v "$(PWD):$(REPO_MOUNT)" \
 	  -p $(PORT):8000 \
 	  $(IMAGE) \
-	  python api/manage.py runserver 0.0.0.0:8000
+	  python api/manage.py runserver 0.0.0.0:8000 --insecure
 	@echo "API: http://127.0.0.1:$(PORT)/"
 
 docker-api-down: ## Stop API container
@@ -161,6 +164,7 @@ docker-worker-up: kubeconfig-kind ## Start worker container (requires kind netwo
 	@docker rm -f $(WORKER_NAME) >/dev/null 2>&1 || true
 	docker run -d --name $(WORKER_NAME) \
 	  --env-file $(ENV_FILE) \
+	  -e DB_ENGINE=$(DOCKER_DB_ENGINE) \
 	  -e REPO_ROOT=$(REPO_MOUNT) \
 	  -e WORKER_METRICS_PORT=$(WORKER_METRICS_PORT) \
 	  -e KUBECONFIG=/kube/config \

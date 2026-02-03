@@ -1,9 +1,5 @@
 from __future__ import annotations
 
-import os
-import sys
-
-from django.conf import settings
 from django.db.models import Count, Max
 from prometheus_client import Counter, REGISTRY
 from prometheus_client.core import GaugeMetricFamily
@@ -23,6 +19,21 @@ ENQUEUE_REJECTED_TOTAL = Counter(
 
 
 class JobsDbMetricsCollector:
+    def describe(self):
+        yield GaugeMetricFamily(
+            "k2p_jobs_by_state",
+            "Number of jobs by state",
+            labels=["state"],
+        )
+        yield GaugeMetricFamily(
+            "k2p_job_queue_depth",
+            "Number of jobs in QUEUED state",
+        )
+        yield GaugeMetricFamily(
+            "k2p_last_job_finished_timestamp_seconds",
+            "Unix timestamp of most recently finished job",
+        )
+
     def collect(self):
         counts = (
             Job.objects.values("status")
@@ -60,12 +71,8 @@ class JobsDbMetricsCollector:
         yield last_finished_metric
 
 
-_RUNNING_PYTEST = (
-    settings.IS_PYTEST
-    or "PYTEST_CURRENT_TEST" in os.environ
-    or "pytest" in sys.modules
-)
-
-if not _RUNNING_PYTEST and not getattr(REGISTRY, "_k2p_jobs_db_collector_registered", False):
+def register_jobs_db_metrics_collector() -> None:
+    if getattr(REGISTRY, "_k2p_jobs_db_collector_registered", False):
+        return
     REGISTRY.register(JobsDbMetricsCollector())
     setattr(REGISTRY, "_k2p_jobs_db_collector_registered", True)
