@@ -1,0 +1,20 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: k2pweb-postgres
+    environment:
+      POSTGRES_DB: k2pweb
+      POSTGRES_USER: k2pweb
+      POSTGRES_PASSWORD: k2pweb_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - k2pweb_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U k2pweb -d k2pweb"]
+      interval: 5s
+      timeout: 3s
+      retries: 15
+
+volumes:
+  k2pweb_pgdata:
