@@ -38,6 +38,20 @@ get_env_value() {
 
 http_status() { curl -sS -o /dev/null -w '%{http_code}' "$1" || echo "000"; }
 
+assert_status_in() {
+  local url="$1"
+  local expected="$2"  # space-separated list, e.g. "401 403"
+  local code
+  code="$(http_status "$url")"
+  for s in $expected; do
+    if [[ "$code" == "$s" ]]; then
+      say "  GET $url : $code OK"
+      return 0
+    fi
+  done
+  die "GET $url expected one of [$expected], got $code"
+}
+
 wait_http_200() {
   local url="$1" deadline=$((SECONDS + WAIT_SECS)) code="000"
   while (( SECONDS < deadline )); do
@@ -114,6 +128,8 @@ check_nginx_is_front() {
   if ! dc config | grep -qE '^[[:space:]]*nginx:'; then
     die "compose file does not define 'nginx' service"
   fi
+  [[ -f "$REPO_ROOT/deploy/nginx/nginx.conf" ]] || die "missing deploy/nginx/nginx.conf"
+  [[ -f "$REPO_ROOT/deploy/nginx/.htpasswd" ]] || die "missing deploy/nginx/.htpasswd"
 }
 
 check_server_header_is_nginx() {
@@ -219,9 +235,15 @@ main() {
   check_server_header_is_nginx "$API_URL/healthz"
   say "  OK: Server header is nginx"
 
+  say ""
+  say "Step 11: Access-control checks"
+  assert_status_in "$API_URL/admin/sql/" "404"
+  assert_status_in "$API_URL/admin/" "401 403"
+  assert_status_in "$API_URL/metrics" "401 403"
+
   if [[ "$CHECK_STATIC" == "1" ]]; then
     say ""
-    say "Step 11: Static serving check (nginx /static/)"
+    say "Step 12: Static serving check (nginx /static/)"
     local st="$API_URL$STATIC_TEST_PATH"
     local code
     code="$(http_status "$st")"
@@ -231,7 +253,7 @@ main() {
 
   if [[ "$START_WORKER" == "1" ]]; then
     say ""
-    say "Step 12: Start Worker"
+    say "Step 13: Start Worker"
     dc up -d worker
     local worker_cid
     worker_cid="$(wait_for_container_running worker || true)"

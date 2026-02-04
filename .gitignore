@@ -3,6 +3,7 @@
 tests/out/*
 tests/out-k8s/*
 .vscode
+.htpasswd
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
