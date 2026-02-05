@@ -2,13 +2,14 @@
 set -euo pipefail
 
 COMPOSE_FILE="${COMPOSE_FILE:-docker-compose.prod.nginx.yml}"
-API_URL="${API_URL:-http://127.0.0.1:80}"   # hits nginx
+API_URL="${API_URL:-https://127.0.0.1}"   # hits nginx
 WIPE_VOLUMES="${WIPE_VOLUMES:-0}"
 START_WORKER="${START_WORKER:-0}"
 CHECK_READYZ="${CHECK_READYZ:-1}"
-REQUIRE_TLS="${REQUIRE_TLS:-0}"
+REQUIRE_TLS="${REQUIRE_TLS:-1}"
 BUILD="${BUILD:-1}"
 WAIT_SECS="${WAIT_SECS:-60}"
+CURL_INSECURE="${CURL_INSECURE:-1}"  # 1 => curl -k for local/self-signed certs
 
 DEPLOY_FAIL_LEVEL="${DEPLOY_FAIL_LEVEL:-WARNING}"  # ERROR|WARNING|INFO
 CHECK_STATIC="${CHECK_STATIC:-1}"
@@ -79,10 +80,12 @@ setup_curl_host_header() {
 http_status() {
   local url
   url="$(trim_ws "${1-}")"
+  local tls_flag=()
+  [[ "$CURL_INSECURE" == "1" ]] && tls_flag=(-k)
   if [[ -n "$CURL_HOST_HEADER" ]]; then
-    curl -sS -H "$CURL_HOST_HEADER" -o /dev/null -w '%{http_code}' "$url" || echo "000"
+    curl "${tls_flag[@]}" -sS -H "$CURL_HOST_HEADER" -o /dev/null -w '%{http_code}' "$url" || echo "000"
   else
-    curl -sS -o /dev/null -w '%{http_code}' "$url" || echo "000"
+    curl "${tls_flag[@]}" -sS -o /dev/null -w '%{http_code}' "$url" || echo "000"
   fi
 }
 
@@ -113,10 +116,12 @@ wait_http_200() {
   done
 
   say "  last status for $url: $code"
+  local tls_flag=()
+  [[ "$CURL_INSECURE" == "1" ]] && tls_flag=(-k)
   if [[ -n "$CURL_HOST_HEADER" ]]; then
-    curl -sS -H "$CURL_HOST_HEADER" -D- -o /dev/null "$url" || true
+    curl "${tls_flag[@]}" -sS -H "$CURL_HOST_HEADER" -D- -o /dev/null "$url" || true
   else
-    curl -sS -D- -o /dev/null "$url" || true
+    curl "${tls_flag[@]}" -sS -D- -o /dev/null "$url" || true
   fi
   return 1
 }
@@ -199,10 +204,12 @@ check_nginx_is_front() {
 check_server_header_is_nginx() {
   local url hdr
   url="$(trim_ws "${1-}")"
+  local tls_flag=()
+  [[ "$CURL_INSECURE" == "1" ]] && tls_flag=(-k)
   if [[ -n "$CURL_HOST_HEADER" ]]; then
-    hdr="$(curl -sS -H "$CURL_HOST_HEADER" -I "$url" 2>/dev/null || true)"
+    hdr="$(curl "${tls_flag[@]}" -sS -H "$CURL_HOST_HEADER" -I "$url" 2>/dev/null || true)"
   else
-    hdr="$(curl -sS -I "$url" 2>/dev/null || true)"
+    hdr="$(curl "${tls_flag[@]}" -sS -I "$url" 2>/dev/null || true)"
   fi
 
   if ! echo "$hdr" | grep -qiE '^Server: *nginx'; then
@@ -223,7 +230,7 @@ main() {
   say "Docker context: $(docker context show 2>/dev/null || echo unknown)"
   say "Compose file: $COMPOSE_FILE"
   say "API_URL: $API_URL"
-  say "WIPE_VOLUMES=$WIPE_VOLUMES START_WORKER=$START_WORKER CHECK_READYZ=$CHECK_READYZ REQUIRE_TLS=$REQUIRE_TLS BUILD=$BUILD"
+  say "WIPE_VOLUMES=$WIPE_VOLUMES START_WORKER=$START_WORKER CHECK_READYZ=$CHECK_READYZ REQUIRE_TLS=$REQUIRE_TLS BUILD=$BUILD CURL_INSECURE=$CURL_INSECURE"
   say ""
 
   [[ "$REQUIRE_TLS" == "0" || "$API_URL" == https://* ]] || die "REQUIRE_TLS=1 but API_URL is not https://"
