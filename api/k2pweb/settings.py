@@ -224,7 +224,23 @@ SECURE_HSTS_SECONDS = int(os.environ.get("SECURE_HSTS_SECONDS", "0"))
 SECURE_HSTS_INCLUDE_SUBDOMAINS = env_bool("SECURE_HSTS_INCLUDE_SUBDOMAINS", False)
 SECURE_HSTS_PRELOAD = env_bool("SECURE_HSTS_PRELOAD", False)
 SECURE_SSL_REDIRECT = env_bool("SECURE_SSL_REDIRECT", False)
-SECURE_REDIRECT_EXEMPT = env_list("SECURE_REDIRECT_EXEMPT", [])
+
+# Django matches these regexes against request.path.lstrip("/")
+# i.e. "healthz", not "/healthz"
+_raw_exempt = env_list("SECURE_REDIRECT_EXEMPT", [])
+
+def _sanitize_exempt_pattern(p: str) -> str:
+    p = p.strip()
+    if p.startswith("^/"):
+        # common mistake: "^/healthz$" -> "^healthz$"
+        p = "^" + p[2:]
+    elif p.startswith("/"):
+        # common mistake: "/healthz" -> "healthz"
+        p = p[1:]
+    return p
+
+SECURE_REDIRECT_EXEMPT = [_sanitize_exempt_pattern(p) for p in _raw_exempt if p.strip()]
+
 SESSION_COOKIE_SECURE = env_bool("SESSION_COOKIE_SECURE", False)
 CSRF_COOKIE_SECURE = env_bool("CSRF_COOKIE_SECURE", False)
 
