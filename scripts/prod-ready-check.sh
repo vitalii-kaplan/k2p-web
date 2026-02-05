@@ -2,7 +2,7 @@
 set -euo pipefail
 
 COMPOSE_FILE="${COMPOSE_FILE:-docker-compose.prod.nginx.yml}"
-API_URL="${API_URL:-http://127.0.0.1:8000}"   # hits nginx
+API_URL="${API_URL:-http://127.0.0.1:80}"   # hits nginx
 WIPE_VOLUMES="${WIPE_VOLUMES:-0}"
 START_WORKER="${START_WORKER:-0}"
 CHECK_READYZ="${CHECK_READYZ:-1}"
@@ -26,6 +26,15 @@ need_cmd() { command -v "$1" >/dev/null 2>&1 || die "missing required command: $
 
 mask_secret() { [[ -n "${1:-}" ]] && echo "set" || echo "unset"; }
 
+trim_ws() {
+  # trim leading/trailing whitespace and strip CR
+  local s="${1-}"
+  s="${s//$'\r'/}"
+  s="${s#"${s%%[![:space:]]*}"}"
+  s="${s%"${s##*[![:space:]]}"}"
+  printf '%s' "$s"
+}
+
 get_env_value() {
   local key="$1" file="$2"
   [[ -f "$file" ]] || return 1
@@ -36,7 +45,46 @@ get_env_value() {
   ' "$file"
 }
 
-http_status() { curl -sS -o /dev/null -w '%{http_code}' "$1" || echo "000"; }
+url_host() {
+  local u="$1"
+  u="${u#*://}"
+  u="${u%%/*}"
+  u="${u%%:*}"
+  echo "$u"
+}
+
+# Global (always set)
+CURL_HOST_HEADER=""
+DJANGO_ALLOWED_HOSTS_RAW=""
+
+setup_curl_host_header() {
+  local api_host hosts first
+  api_host="$(url_host "$API_URL")"
+  hosts="${DJANGO_ALLOWED_HOSTS_RAW:-}"
+
+  CURL_HOST_HEADER=""
+
+  # Only needed when we hit localhost but ALLOWED_HOSTS is domain-only
+  if [[ "$api_host" == "127.0.0.1" || "$api_host" == "localhost" ]]; then
+    if [[ -n "$hosts" ]] && [[ "$hosts" != *"127.0.0.1"* ]] && [[ "$hosts" != *"localhost"* ]]; then
+      first="${hosts%%,*}"
+      first="$(trim_ws "$first")"
+      first="${first//[[:space:]]/}"
+      first="${first//$'\r'/}"
+      [[ -n "$first" ]] && CURL_HOST_HEADER="Host: $first"
+    fi
+  fi
+}
+
+http_status() {
+  local url
+  url="$(trim_ws "${1-}")"
+  if [[ -n "$CURL_HOST_HEADER" ]]; then
+    curl -sS -H "$CURL_HOST_HEADER" -o /dev/null -w '%{http_code}' "$url" || echo "000"
+  else
+    curl -sS -o /dev/null -w '%{http_code}' "$url" || echo "000"
+  fi
+}
 
 assert_status_in() {
   local url="$1"
@@ -53,14 +101,23 @@ assert_status_in() {
 }
 
 wait_http_200() {
-  local url="$1" deadline=$((SECONDS + WAIT_SECS)) code="000"
+  local url deadline code
+  url="$(trim_ws "${1-}")"
+  deadline=$((SECONDS + WAIT_SECS))
+  code="000"
+
   while (( SECONDS < deadline )); do
     code="$(http_status "$url")"
     [[ "$code" == "200" ]] && return 0
     sleep 1
   done
+
   say "  last status for $url: $code"
-  curl -sS -D- -o /dev/null "$url" || true
+  if [[ -n "$CURL_HOST_HEADER" ]]; then
+    curl -sS -H "$CURL_HOST_HEADER" -D- -o /dev/null "$url" || true
+  else
+    curl -sS -D- -o /dev/null "$url" || true
+  fi
   return 1
 }
 
@@ -103,6 +160,13 @@ check_env_sane() {
   secret="$(get_env_value DJANGO_SECRET_KEY "$env_file" || true)"
   hosts="$(get_env_value DJANGO_ALLOWED_HOSTS "$env_file" || true)"
 
+  debug="$(trim_ws "$debug")"
+  db_engine="$(trim_ws "$db_engine")"
+  secret="$(trim_ws "$secret")"
+  hosts="$(trim_ws "$hosts")"
+
+  DJANGO_ALLOWED_HOSTS_RAW="${hosts:-}"
+
   say ""
   say ".env checks:"
   say "  DJANGO_DEBUG=${debug:-unset}"
@@ -133,8 +197,14 @@ check_nginx_is_front() {
 }
 
 check_server_header_is_nginx() {
-  local url="$1" hdr
-  hdr="$(curl -sS -I "$url" 2>/dev/null || true)"
+  local url hdr
+  url="$(trim_ws "${1-}")"
+  if [[ -n "$CURL_HOST_HEADER" ]]; then
+    hdr="$(curl -sS -H "$CURL_HOST_HEADER" -I "$url" 2>/dev/null || true)"
+  else
+    hdr="$(curl -sS -I "$url" 2>/dev/null || true)"
+  fi
+
   if ! echo "$hdr" | grep -qiE '^Server: *nginx'; then
     say "  headers:"
     echo "$hdr" | sed -n '1,40p'
@@ -147,6 +217,8 @@ main() {
   need_cmd git
   need_cmd curl
 
+  API_URL="$(trim_ws "$API_URL")"
+
   say "Repo: $REPO_ROOT"
   say "Docker context: $(docker context show 2>/dev/null || echo unknown)"
   say "Compose file: $COMPOSE_FILE"
@@ -157,7 +229,12 @@ main() {
   [[ "$REQUIRE_TLS" == "0" || "$API_URL" == https://* ]] || die "REQUIRE_TLS=1 but API_URL is not https://"
 
   check_env_sane
+  setup_curl_host_header
   check_nginx_is_front
+
+  if [[ -n "$CURL_HOST_HEADER" ]]; then
+    say "  NOTE: sending -H '$CURL_HOST_HEADER' (to satisfy DJANGO_ALLOWED_HOSTS when hitting localhost)"
+  fi
 
   say ""
   say "Step 1: Teardown"
