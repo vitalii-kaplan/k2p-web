@@ -74,10 +74,39 @@ services:
       DB_PASSWORD: "k2pweb_password"
 
       DJANGO_DEBUG: "0"
+
+      # IMPORTANT: keep static output consistent if collectstatic is ever run here
+      STATIC_ROOT: "/static"
     depends_on:
       postgres:
         condition: service_healthy
     command: ["python", "manage.py", "k2p_worker"]
+    volumes:
+      - staticfiles:/static
+
+  # One-off helper: run static collection into the shared volume
+  collectstatic:
+    build: .
+    container_name: k2pweb-collectstatic
+    working_dir: /app/api
+    env_file:
+      - .env
+    environment:
+      DB_ENGINE: "postgres"
+      DB_HOST: "postgres"
+      DB_PORT: "5432"
+      DB_NAME: "k2pweb"
+      DB_USER: "k2pweb"
+      DB_PASSWORD: "k2pweb_password"
+      STATIC_ROOT: "/static"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: ["python", "manage.py", "collectstatic", "--noinput"]
+    volumes:
+      - staticfiles:/static
+    restart: "no"
+    profiles: ["ops"]
 
   nginx:
     image: nginx:1.27-alpine
