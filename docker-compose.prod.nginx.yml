@@ -33,14 +33,6 @@ services:
 
       # IMPORTANT: collectstatic target shared with nginx
       STATIC_ROOT: "/static"
-      SECURE_HSTS_SECONDS: "31536000"
-      SECURE_HSTS_INCLUDE_SUBDOMAINS: "1"
-      SECURE_HSTS_PRELOAD: "1"
-      SECURE_SSL_REDIRECT: "1"
-      SECURE_REDIRECT_EXEMPT: "healthz,readyz"
-      SESSION_COOKIE_SECURE: "1"
-      CSRF_COOKIE_SECURE: "1"
-      USE_X_FORWARDED_PROTO: "1"
     depends_on:
       postgres:
         condition: service_healthy
