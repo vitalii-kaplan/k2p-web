@@ -162,6 +162,9 @@ else:
 
 STATIC_URL = "/static/"
 STATICFILES_DIRS = [BASE_DIR / "static"]
+_repo_static = REPO_ROOT / "static"
+if _repo_static.exists() and _repo_static not in STATICFILES_DIRS:
+    STATICFILES_DIRS.append(_repo_static)
 STATIC_ROOT = str(resolve_under_repo(os.environ.get("STATIC_ROOT", "var/static")))
 
 # If you don't use MEDIA at all, you can remove these.
