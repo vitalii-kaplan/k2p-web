@@ -4,6 +4,9 @@ tests/out/*
 tests/out-k8s/*
 .vscode
 .htpasswd
+certs/*
+*.key
+*.pem
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
