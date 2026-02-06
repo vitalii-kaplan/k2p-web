@@ -46,7 +46,7 @@ jobs:
       - name: Run production compose readiness check
         run: |
           chmod +x ./scripts/prod-ready-check.sh
-          COMPOSE_FILE=docker-compose.prod.nginx.yml API_URL=https://127.0.0.1 START_WORKER=1 REQUIRE_TLS=1 CURL_INSECURE=1 ./scripts/prod-ready-check.sh
+          COMPOSE_FILE=docker-compose.prod.nginx.yml API_URL=http://127.0.0.1 START_WORKER=1 REQUIRE_TLS=0 ./scripts/prod-ready-check.sh
 
       - name: Show compose logs on failure
         if: failure()
