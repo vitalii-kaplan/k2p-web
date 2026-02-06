@@ -83,6 +83,7 @@ services:
     command: ["python", "manage.py", "k2p_worker"]
     volumes:
       - staticfiles:/static
+      - /var/run/docker.sock:/var/run/docker.sock
 
   # One-off helper: run static collection into the shared volume
   collectstatic:

@@ -4,8 +4,9 @@ import json
 import logging
 import os
 import time
-from prometheus_client import start_http_server
 from pathlib import Path
+
+from prometheus_client import start_http_server
 
 from django.conf import settings
 from django.core.management.base import BaseCommand
@@ -13,13 +14,6 @@ from django.db import transaction
 from django.utils import timezone
 
 from apps.core.db_logging import log_db_settings
-from apps.jobs.k8s import (
-    kubectl_apply_yaml,
-    kubectl_get_job,
-    job_state,
-    normalize_job_name,
-    render_job_manifest,
-)
 from apps.jobs.models import Job
 from apps.jobs.metrics_worker import (
     JOB_DURATION_SECONDS,
@@ -29,24 +23,22 @@ from apps.jobs.metrics_worker import (
     JOB_RUN_SECONDS,
     K2P_ERROR_TOTAL,
     K2P_EXIT_CODE_TOTAL,
-    K8S_JOB_START_LATENCY_SECONDS,
-    KUBECTL_FAILURES_TOTAL,
     WORKER_ERRORS_TOTAL,
     WORKER_HEARTBEAT_TIMESTAMP_SECONDS,
 )
+from apps.jobs.runner import DockerRunner, RunnerError
 
 logger = logging.getLogger("k2p.worker")
 
 class Command(BaseCommand):
-    help = "Async dispatcher/reconciler: submits QUEUED jobs to k8s and updates RUNNING jobs."
+    help = "Async dispatcher: runs QUEUED jobs via local runner and updates DB state."
 
     def add_arguments(self, parser):
         parser.add_argument("--sleep", type=float, default=1.0, help="Loop sleep seconds")
 
     def handle(self, *args, **opts):
         sleep_s = float(opts["sleep"])
-        ns = getattr(settings, "K8S_NAMESPACE", "k2p")
-        image = getattr(settings, "K2P_IMAGE", "ghcr.io/vitalii-kaplan/knime2py:main")
+        runner = self._build_runner()
 
         # Expose worker metrics
         addr = os.environ.get("WORKER_METRICS_ADDR", "0.0.0.0")
@@ -57,8 +49,7 @@ class Command(BaseCommand):
         try:
             while True:
                 try:
-                    self._submit_one(ns=ns, image=image)
-                    self._reconcile_running(ns=ns)
+                    self._run_one(runner=runner)
                     WORKER_HEARTBEAT_TIMESTAMP_SECONDS.set(time.time())
                 except Exception:  # noqa: BLE001
                     WORKER_ERRORS_TOTAL.inc()
@@ -68,7 +59,29 @@ class Command(BaseCommand):
             self.stdout.write(self.style.WARNING("Worker stopped."))
             return
 
-    def _submit_one(self, *, ns: str, image: str) -> None:
+    def _build_runner(self) -> DockerRunner:
+        backend = getattr(settings, "JOB_RUNNER_BACKEND", "docker")
+        if backend != "docker":
+            raise RuntimeError(f"Unsupported JOB_RUNNER_BACKEND: {backend}")
+        return DockerRunner(
+            docker_bin=getattr(settings, "DOCKER_BIN", "docker"),
+            image=getattr(settings, "K2P_IMAGE", "ghcr.io/vitalii-kaplan/knime2py:main"),
+            timeout_s=int(getattr(settings, "K2P_TIMEOUT_SECS", 300)),
+            cpu=str(getattr(settings, "K2P_CPU", "1.0")),
+            memory=str(getattr(settings, "K2P_MEMORY", "1g")),
+            pids_limit=str(getattr(settings, "K2P_PIDS_LIMIT", "256")),
+            command=str(getattr(settings, "K2P_COMMAND", "")) or None,
+            args_template=str(getattr(settings, "K2P_ARGS_TEMPLATE", "")) or None,
+            container_repo_root=Path(getattr(settings, "REPO_ROOT", ".")),
+            container_job_storage_root=Path(getattr(settings, "JOB_STORAGE_ROOT", ".")),
+            container_result_storage_root=Path(getattr(settings, "RESULT_STORAGE_ROOT", ".")),
+            host_repo_root=str(getattr(settings, "HOST_REPO_ROOT", "")),
+            host_job_storage_root=str(getattr(settings, "HOST_JOB_STORAGE_ROOT", "")),
+            host_result_storage_root=str(getattr(settings, "HOST_RESULT_STORAGE_ROOT", "")),
+            logger=logger,
+        )
+
+    def _run_one(self, *, runner: DockerRunner) -> None:
         with transaction.atomic():
             job = (
                 Job.objects.select_for_update(skip_locked=True)
@@ -88,98 +101,93 @@ class Command(BaseCommand):
                 )
             )
 
-            job_name = normalize_job_name(str(job.id))
-            job.k8s_namespace = ns
-            job.k8s_job_name = job_name
             job.status = Job.Status.RUNNING
             job.started_at = timezone.now()
-            job.save(update_fields=["k8s_namespace", "k8s_job_name", "status", "started_at"])
+            job.save(update_fields=["status", "started_at"])
 
         if job.created_at and job.started_at:
             JOB_QUEUE_WAIT_SECONDS.observe((job.started_at - job.created_at).total_seconds())
 
-        # Map repo paths into kind node mount (/repo/...)
         # input_key is e.g. jobs/<uuid>/<stem>.zip stored under JOB_STORAGE_ROOT
         in_host = Path(settings.JOB_STORAGE_ROOT) / job.input_key
-        in_filename = Path(job.input_key).name or "bundle.zip"
         out_dir = Path(settings.RESULT_STORAGE_ROOT) / f"jobs/{job.id}"
         out_dir.mkdir(parents=True, exist_ok=True)
 
-        manifest = render_job_manifest(
-            namespace=ns,
-            job_name=job.k8s_job_name,
-            image=image,
-            in_host_path=f"/repo/{in_host.relative_to(settings.REPO_ROOT)}",
-            in_container_path=f"/in/{in_filename}",
-            out_host_dir=f"/repo/{out_dir.relative_to(settings.REPO_ROOT)}",
-        )
-
-        submit_started = time.time()
-        ok, _stdout, stderr = kubectl_apply_yaml(manifest)
-        K8S_JOB_START_LATENCY_SECONDS.observe(time.time() - submit_started)
-        if ok:
-            logger.info(
-                json.dumps(
-                    {
-                        "event": "k8s_job_created",
-                        "job_id": str(job.id),
-                        "k8s_job_name": job.k8s_job_name,
-                        "k8s_namespace": job.k8s_namespace,
-                    }
-                )
-            )
-        if not ok:
-            KUBECTL_FAILURES_TOTAL.inc()
+        if not in_host.exists():
             Job.objects.filter(id=job.id).update(
                 status=Job.Status.FAILED,
                 finished_at=timezone.now(),
-                error_code="k8s_submit_failed",
-                error_message=stderr[-4000:],
+                error_code="input_missing",
+                error_message=f"input file not found: {in_host}",
             )
+            return
 
-    def _reconcile_running(self, *, ns: str) -> None:
-        running = Job.objects.filter(status=Job.Status.RUNNING).exclude(k8s_job_name="")
-        for j in running.iterator(chunk_size=50):
-            job_json = kubectl_get_job(ns, j.k8s_job_name)
-            if not job_json:
-                continue
+        finished_at = timezone.now()
+        exit_code: int | None = None
+        stdout_tail = ""
+        stderr_tail = ""
+        status = Job.Status.SUCCEEDED
+        error_code = ""
+        error_message = ""
 
-            state, exit_code = job_state(job_json)
-            if state == "RUNNING":
-                continue
-
-            # For now: result_key points to the results directory
-            result_key = f"jobs/{j.id}/"
-
-            Job.objects.filter(id=j.id).update(
-                status=Job.Status.SUCCEEDED if state == "SUCCEEDED" else Job.Status.FAILED,
-                finished_at=timezone.now(),
-                exit_code=exit_code,
-                result_key=result_key,
-                error_code="" if state == "SUCCEEDED" else "k8s_job_failed",
-                error_message="" if state == "SUCCEEDED" else "Kubernetes Job failed (check cluster logs).",
-            )
-            finished_at = timezone.now()
-            duration_s = None
-            if j.started_at:
-                duration_s = (finished_at - j.started_at).total_seconds()
-                JOB_DURATION_SECONDS.observe(duration_s)
-                JOB_RUN_SECONDS.observe(duration_s)
-            if j.created_at:
-                JOB_END_TO_END_SECONDS.observe((finished_at - j.created_at).total_seconds())
-            JOB_FINISHED_TOTAL.labels(status=state).inc()
-            if exit_code is not None:
-                K2P_EXIT_CODE_TOTAL.labels(exit_code=str(exit_code)).inc()
-            if state != "SUCCEEDED":
-                K2P_ERROR_TOTAL.inc()
+        try:
+            result = runner.run_job(str(job.id), in_host, out_dir)
+            exit_code = result.get("exit_code")
+            stdout_tail = result.get("stdout_tail", "") or ""
+            stderr_tail = result.get("stderr_tail", "") or ""
+            status = Job.Status.SUCCEEDED
             logger.info(
                 json.dumps(
                     {
-                        "event": "job_finished",
-                        "job_id": str(j.id),
-                        "status": state,
-                        "duration_seconds": duration_s,
-                        "error_code": "" if state == "SUCCEEDED" else "k8s_job_failed",
+                        "event": "runner_job_finished",
+                        "job_id": str(job.id),
+                        "status": "SUCCEEDED",
                     }
                 )
             )
+        except RunnerError as exc:
+            status = Job.Status.FAILED
+            error_code = "runner_failed"
+            exit_code = exc.exit_code
+            stdout_tail = exc.stdout_tail
+            stderr_tail = exc.stderr_tail
+            error_message = f"runner_failed: exit={exc.exit_code}, stderr_tail={exc.stderr_tail[:1000]}"
+
+        result_key = f"jobs/{job.id}/"
+        finished_at = timezone.now()
+        Job.objects.filter(id=job.id).update(
+            status=status,
+            finished_at=finished_at,
+            exit_code=exit_code,
+            result_key=result_key,
+            stdout_tail=stdout_tail,
+            stderr_tail=stderr_tail,
+            error_code=error_code,
+            error_message=error_message,
+        )
+
+        duration_s = None
+        if job.started_at:
+            duration_s = (finished_at - job.started_at).total_seconds()
+            JOB_DURATION_SECONDS.observe(duration_s)
+            JOB_RUN_SECONDS.observe(duration_s)
+        if job.created_at:
+            JOB_END_TO_END_SECONDS.observe((finished_at - job.created_at).total_seconds())
+
+        JOB_FINISHED_TOTAL.labels(status=status.value).inc()
+        if exit_code is not None:
+            K2P_EXIT_CODE_TOTAL.labels(exit_code=str(exit_code)).inc()
+        if status != Job.Status.SUCCEEDED:
+            K2P_ERROR_TOTAL.inc()
+
+        logger.info(
+            json.dumps(
+                {
+                    "event": "job_finished",
+                    "job_id": str(job.id),
+                    "status": status.value,
+                    "duration_seconds": duration_s,
+                    "error_code": error_code,
+                }
+            )
+        )

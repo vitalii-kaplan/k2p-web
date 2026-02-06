@@ -106,3 +106,10 @@ UI unit tests require Node.js + npm (install via `brew install node`).
 npm install
 npm run test:ui
 ```
+
+## Debugging (runner)
+
+```bash
+docker compose exec -T worker env | grep K2P
+docker compose exec -T worker sh -lc 'docker ps'
+```

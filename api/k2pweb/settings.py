@@ -24,6 +24,23 @@ def env_bool(name: str, default: bool = False) -> bool:
     return v.strip().lower() in ("1", "true", "yes", "on")
 
 
+def env_str(name: str, default: str | None = None) -> str:
+    v = os.environ.get(name)
+    if v is None:
+        return default if default is not None else ""
+    return v
+
+
+def env_int(name: str, default: int) -> int:
+    v = os.environ.get(name)
+    if v is None:
+        return default
+    try:
+        return int(v)
+    except ValueError:
+        return default
+
+
 def env_list(name: str, default: list[str] | None = None) -> list[str]:
     v = os.environ.get(name)
     if v is None:
@@ -193,8 +210,21 @@ STORAGES = {
 # -----------------------------------------------------------------------------
 
 K8S_NAMESPACE = os.environ.get("K8S_NAMESPACE", "k2p")
-K2P_IMAGE = os.environ.get("K2P_IMAGE", "ghcr.io/vitalii-kaplan/knime2py:main")
 MAX_QUEUED_JOBS = int(os.environ.get("MAX_QUEUED_JOBS", "50"))
+
+# Runner configuration (local Docker runner)
+JOB_RUNNER_BACKEND = env_str("JOB_RUNNER_BACKEND", "docker")
+K2P_IMAGE = env_str("K2P_IMAGE", "ghcr.io/vitalii-kaplan/knime2py:main")
+K2P_TIMEOUT_SECS = env_int("K2P_TIMEOUT_SECS", 300)
+K2P_CPU = env_str("K2P_CPU", "1.0")
+K2P_MEMORY = env_str("K2P_MEMORY", "1g")
+K2P_PIDS_LIMIT = env_str("K2P_PIDS_LIMIT", "256")
+K2P_COMMAND = env_str("K2P_COMMAND", "")
+K2P_ARGS_TEMPLATE = env_str("K2P_ARGS_TEMPLATE", "")
+DOCKER_BIN = env_str("DOCKER_BIN", "docker")
+HOST_REPO_ROOT = env_str("HOST_REPO_ROOT", "")
+HOST_JOB_STORAGE_ROOT = env_str("HOST_JOB_STORAGE_ROOT", "")
+HOST_RESULT_STORAGE_ROOT = env_str("HOST_RESULT_STORAGE_ROOT", "")
 
 # Expose as strings too (some code may expect str)
 JOB_STORAGE_ROOT_STR = str(JOB_STORAGE_ROOT)

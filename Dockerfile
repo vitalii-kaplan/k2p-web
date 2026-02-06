@@ -5,22 +5,18 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-# System deps + kubectl (match container arch)
+# System deps + Docker CLI (no k8s needed)
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends curl ca-certificates \
+    && apt-get install -y --no-install-recommends curl ca-certificates gnupg \
+    && install -m 0755 -d /etc/apt/keyrings \
+    && curl -fsSL https://download.docker.com/linux/debian/gpg -o /etc/apt/keyrings/docker.asc \
+    && chmod a+r /etc/apt/keyrings/docker.asc \
+    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/debian $(. /etc/os-release && echo \"$VERSION_CODENAME\") stable" \
+      > /etc/apt/sources.list.d/docker.list \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends docker-ce-cli \
+    && command -v docker >/dev/null 2>&1 \
     && rm -rf /var/lib/apt/lists/*
-
-RUN set -eux; \
-    arch="$(dpkg --print-architecture)"; \
-    case "${arch}" in \
-      amd64)  karch="amd64" ;; \
-      arm64)  karch="arm64" ;; \
-      *) echo "Unsupported architecture: ${arch}" >&2; exit 1 ;; \
-    esac; \
-    ver="$(curl -fsSL https://dl.k8s.io/release/stable.txt)"; \
-    curl -fsSL "https://dl.k8s.io/release/${ver}/bin/linux/${karch}/kubectl" -o /usr/local/bin/kubectl; \
-    chmod +x /usr/local/bin/kubectl; \
-    kubectl version --client=true
 
 # Copy project files needed for packaging
 COPY pyproject.toml README.md /app/

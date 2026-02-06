@@ -9,7 +9,6 @@
 
 .PHONY: help dev server worker test test-py test-ui lint fmt \
         migrate makemigrations shell reset-db \
-        kind-up kind-down kubeconfig-kind \
         docker-build docker-pull docker-ps \
         docker-api-up docker-api-down docker-api-logs docker-api-shell \
         docker-migrate \
@@ -38,11 +37,6 @@ WORKER_NAME ?= k2pweb-worker
 PORT ?= 8000
 WORKER_METRICS_PORT ?= 8001
 DOCKER_DB_ENGINE ?= sqlite
-
-# For kind connectivity from inside a container:
-KIND_CLUSTER ?= k2p
-KIND_NETWORK ?= kind
-KUBECONFIG_KIND ?= var/kubeconfig-kind.yaml
 
 # Mount repo into containers at /repo (matches your kind dev mount pattern)
 REPO_MOUNT ?= /repo
@@ -100,12 +94,6 @@ shell: ## Open Django shell
 reset-db: ## Flush DB and re-migrate
 	./scripts/reset-db.sh
 
-kind-up: ## Create local kind cluster
-	@if [ -x ./scripts/kind-create.sh ]; then ./scripts/kind-create.sh; else kind create cluster --name $(KIND_CLUSTER); fi
-
-kind-down: ## Delete local kind cluster
-	kind delete cluster --name $(KIND_CLUSTER)
-
 venv: ## Print activate command
 	@echo "Run: source .venv/bin/activate"
 
@@ -157,21 +145,17 @@ docker-api-logs: ## Tail API logs
 docker-api-shell: ## Shell into API container
 	docker exec -it $(API_NAME) /bin/sh
 
-kubeconfig-kind: ## Write kubeconfig for kind
-	./scripts/kubeconfig-kind.sh "$(KIND_CLUSTER)" "$(KUBECONFIG_KIND)"
-
-docker-worker-up: kubeconfig-kind ## Start worker container (requires kind network)
+docker-worker-up: ## Start worker container (local Docker runner)
 	@docker rm -f $(WORKER_NAME) >/dev/null 2>&1 || true
 	docker run -d --name $(WORKER_NAME) \
 	  --env-file $(ENV_FILE) \
 	  -e DB_ENGINE=$(DOCKER_DB_ENGINE) \
 	  -e REPO_ROOT=$(REPO_MOUNT) \
+	  -e HOST_REPO_ROOT=$(PWD) \
 	  -e WORKER_METRICS_PORT=$(WORKER_METRICS_PORT) \
-	  -e KUBECONFIG=/kube/config \
 	  -v "$(PWD):$(REPO_MOUNT)" \
-	  -v "$(PWD)/$(KUBECONFIG_KIND):/kube/config:ro" \
+	  -v /var/run/docker.sock:/var/run/docker.sock \
 	  -p $(WORKER_METRICS_PORT):$(WORKER_METRICS_PORT) \
-	  --network $(KIND_NETWORK) \
 	  $(IMAGE) \
 	  python api/manage.py k2p_worker
 	@echo "Worker started."
@@ -185,6 +169,6 @@ docker-worker-logs: ## Tail worker logs
 docker-worker-shell: ## Shell into worker container
 	docker exec -it $(WORKER_NAME) /bin/sh
 
-docker-dev-up: kind-up docker-build docker-migrate docker-api-up docker-worker-up ## Full dev stack (kind + api + worker)
+docker-dev-up: docker-build docker-migrate docker-api-up docker-worker-up ## Full dev stack (api + worker)
 
 docker-dev-down: docker-worker-down docker-api-down ## Stop dev containers
