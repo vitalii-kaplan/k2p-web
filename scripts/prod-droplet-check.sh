@@ -101,6 +101,16 @@ check_no_k8s_submit_errors() {
   say "  OK: no k8s/kubectl errors in worker logs"
 }
 
+check_shared_job_dirs() {
+  say ""
+  say "Step 14b: Verify shared job directories exist"
+  dc exec -T api sh -lc 'test -d /data/jobs && test -d /data/results' || \
+    die "shared job dirs missing in api container (/data/jobs or /data/results)"
+  dc exec -T worker sh -lc 'test -d /data/jobs && test -d /data/results' || \
+    die "shared job dirs missing in worker container (/data/jobs or /data/results)"
+  say "  OK: /data/jobs and /data/results present in api + worker"
+}
+
 wait_for_container_running() {
   local svc="$1" deadline=$((SECONDS + 40)) cid=""
   while (( SECONDS < deadline )); do
@@ -314,6 +324,7 @@ main() {
   fi
 
   check_no_k8s_submit_errors
+  check_shared_job_dirs
 
   say ""
   say "DONE: droplet deploy checks passed."
