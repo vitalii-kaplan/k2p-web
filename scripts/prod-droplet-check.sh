@@ -105,20 +105,20 @@ run_job_smoke_test() {
 
   local job_json job_id status code
   job_json="$(curl "${tls_flag[@]}" -sS -X POST -F "bundle=@${fixture}" "${BASE_HTTPS_URL}/api/jobs")"
-  job_id="$(echo "$job_json" | python -c 'import sys,json; data=json.load(sys.stdin); print(data.get("id","") if isinstance(data, dict) else "")')"
+  job_id="$(echo "$job_json" | sed -n 's/.*"id"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n1)"
   [[ -n "$job_id" ]] || die "failed to parse job id from response: $job_json"
   say "  job_id=$job_id"
 
   local deadline=$((SECONDS + JOB_WAIT_SECS))
   status=""
   while (( SECONDS < deadline )); do
-    status="$(curl "${tls_flag[@]}" -sS "${BASE_HTTPS_URL}/api/jobs/$job_id" | python -c 'import sys,json; data=json.load(sys.stdin); print(data.get("status","") if isinstance(data, dict) else "")')"
+    status="$(curl "${tls_flag[@]}" -sS "${BASE_HTTPS_URL}/api/jobs/$job_id" | sed -n 's/.*"status"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n1)"
     if [[ "$status" == "SUCCEEDED" ]]; then
       break
     fi
     if [[ "$status" == "FAILED" ]]; then
       local err
-      err="$(curl "${tls_flag[@]}" -sS "${BASE_HTTPS_URL}/api/jobs/$job_id" | python -c 'import sys,json; data=json.load(sys.stdin); print(data.get("error_message","") if isinstance(data, dict) else "")')"
+      err="$(curl "${tls_flag[@]}" -sS "${BASE_HTTPS_URL}/api/jobs/$job_id" | sed -n 's/.*"error_message"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n1)"
       die "job failed: $err"
     fi
     sleep 1

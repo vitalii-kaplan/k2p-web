@@ -137,7 +137,7 @@ run_job_smoke_test() {
   else
     job_json="$(curl "${tls_flag[@]}" -sS -X POST -F "bundle=@${fixture}" "$API_URL/api/jobs")"
   fi
-  job_id="$(echo "$job_json" | python -c 'import sys,json; data=json.load(sys.stdin); print(data.get("id","") if isinstance(data, dict) else "")')"
+  job_id="$(echo "$job_json" | sed -n 's/.*"id"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n1)"
   [[ -n "$job_id" ]] || die "failed to parse job id from response: $job_json"
   say "  job_id=$job_id"
 
@@ -145,9 +145,9 @@ run_job_smoke_test() {
   status=""
   while (( SECONDS < deadline )); do
     if [[ -n "$CURL_HOST_HEADER" ]]; then
-      status="$(curl "${tls_flag[@]}" -sS -H "$CURL_HOST_HEADER" "$API_URL/api/jobs/$job_id" | python -c 'import sys,json; data=json.load(sys.stdin); print(data.get("status","") if isinstance(data, dict) else "")')"
+      status="$(curl "${tls_flag[@]}" -sS -H "$CURL_HOST_HEADER" "$API_URL/api/jobs/$job_id" | sed -n 's/.*"status"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n1)"
     else
-      status="$(curl "${tls_flag[@]}" -sS "$API_URL/api/jobs/$job_id" | python -c 'import sys,json; data=json.load(sys.stdin); print(data.get("status","") if isinstance(data, dict) else "")')"
+      status="$(curl "${tls_flag[@]}" -sS "$API_URL/api/jobs/$job_id" | sed -n 's/.*"status"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n1)"
     fi
     if [[ "$status" == "SUCCEEDED" ]]; then
       break
@@ -155,9 +155,9 @@ run_job_smoke_test() {
     if [[ "$status" == "FAILED" ]]; then
       local err
       if [[ -n "$CURL_HOST_HEADER" ]]; then
-        err="$(curl "${tls_flag[@]}" -sS -H "$CURL_HOST_HEADER" "$API_URL/api/jobs/$job_id" | python -c 'import sys,json; data=json.load(sys.stdin); print(data.get("error_message","") if isinstance(data, dict) else "")')"
+        err="$(curl "${tls_flag[@]}" -sS -H "$CURL_HOST_HEADER" "$API_URL/api/jobs/$job_id" | sed -n 's/.*"error_message"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n1)"
       else
-        err="$(curl "${tls_flag[@]}" -sS "$API_URL/api/jobs/$job_id" | python -c 'import sys,json; data=json.load(sys.stdin); print(data.get("error_message","") if isinstance(data, dict) else "")')"
+        err="$(curl "${tls_flag[@]}" -sS "$API_URL/api/jobs/$job_id" | sed -n 's/.*"error_message"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n1)"
       fi
       die "job failed: $err"
     fi

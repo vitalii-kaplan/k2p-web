@@ -15,6 +15,9 @@ HTTP_RETRIES="${HTTP_RETRIES:-60}"        # retries for HTTP readiness
 HTTP_SLEEP="${HTTP_SLEEP:-1}"             # seconds between HTTP retries
 
 MIGRATE_SKIP_CHECKS="${MIGRATE_SKIP_CHECKS:-0}" # 1 => use --skip-checks
+CHECK_JOB_RUN="${CHECK_JOB_RUN:-1}"
+JOB_FIXTURE_ZIP="${JOB_FIXTURE_ZIP:-tests/data/discounts.zip}"
+JOB_WAIT_SECS="${JOB_WAIT_SECS:-120}"
 
 # ----------------------------
 # Helpers
@@ -197,6 +200,39 @@ http_wait_200() {
   return 1
 }
 
+run_job_smoke_test() {
+  echo "Step 10: Job smoke test (upload + result.zip availability)"
+  local fixture="${repo_root}/${JOB_FIXTURE_ZIP}"
+  [[ -f "$fixture" ]] || die "missing job fixture: $fixture"
+
+  local job_json job_id status code
+  job_json="$(curl -sS -X POST -F "bundle=@${fixture}" "${API_URL}/api/jobs")"
+  job_id="$(echo "$job_json" | sed -n 's/.*"id"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n1)"
+  [[ -n "$job_id" ]] || die "failed to parse job id from response: $job_json"
+  echo "  job_id=$job_id"
+
+  local deadline=$((SECONDS + JOB_WAIT_SECS))
+  status=""
+  while (( SECONDS < deadline )); do
+    status="$(curl -sS "${API_URL}/api/jobs/$job_id" | sed -n 's/.*"status"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n1)"
+    if [[ "$status" == "SUCCEEDED" ]]; then
+      break
+    fi
+    if [[ "$status" == "FAILED" ]]; then
+      local err
+      err="$(curl -sS "${API_URL}/api/jobs/$job_id" | sed -n 's/.*"error_message"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n1)"
+      die "job failed: $err"
+    fi
+    sleep 1
+  done
+
+  [[ "$status" == "SUCCEEDED" ]] || die "job did not finish within ${JOB_WAIT_SECS}s (last=$status)"
+  code="$(curl -sS -o /dev/null -w '%{http_code}' "${API_URL}/api/jobs/$job_id/result.zip" || echo "000")"
+  [[ "$code" == "200" ]] || die "result.zip not downloadable (status=$code)"
+  echo "  GET /api/jobs/$job_id/result.zip : 200 OK"
+  echo
+}
+
 # ----------------------------
 # Start
 # ----------------------------
@@ -294,6 +330,10 @@ if [[ "$START_WORKER" == "1" ]]; then
   echo "  worker container: $worker_cid"
   echo "  worker is running"
   echo
+fi
+
+if [[ "$CHECK_JOB_RUN" == "1" ]]; then
+  run_job_smoke_test
 fi
 
 echo "DONE: local stack is up and verified."
