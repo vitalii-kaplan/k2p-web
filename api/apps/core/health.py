@@ -37,20 +37,4 @@ def readyz(_request):
             checks[key.lower()] = f"error: {exc}"
             ok = False
 
-    # Optional K8s check
-    if getattr(settings, "READINESS_CHECK_K8S", False):
-        try:
-            p = subprocess.run(
-                ["kubectl", "version", "--request-timeout=2s"],
-                check=False,
-                capture_output=True,
-                text=True,
-            )
-            if p.returncode != 0:
-                raise RuntimeError(p.stderr.strip() or "kubectl failed")
-            checks["k8s"] = "ok"
-        except Exception as exc:  # noqa: BLE001
-            checks["k8s"] = f"error: {exc}"
-            ok = False
-
     return JsonResponse({"status": "ok" if ok else "fail", "checks": checks}, status=200 if ok else 503)

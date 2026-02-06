@@ -43,17 +43,6 @@ WORKER_ERRORS_TOTAL = Counter(
     "Total number of worker loop errors",
 )
 
-K8S_JOB_START_LATENCY_SECONDS = Histogram(
-    "k2p_k8s_job_start_latency_seconds",
-    "Time spent submitting job to Kubernetes (seconds)",
-    buckets=(0.1, 0.5, 1, 2, 5, 10, 30, 60),
-)
-
-KUBECTL_FAILURES_TOTAL = Counter(
-    "k2p_kubectl_failures_total",
-    "Total number of kubectl failures",
-)
-
 K2P_EXIT_CODE_TOTAL = Counter(
     "k2p_exit_code_total",
     "Total number of job exit codes",

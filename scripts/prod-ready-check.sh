@@ -245,6 +245,12 @@ main() {
 
   say ""
   say "Step 1: Teardown"
+  # Remove named containers if left behind from non-compose runs.
+  for c in k2pweb-api k2pweb-worker k2pweb-postgres k2pweb-nginx; do
+    if docker ps -a --format '{{.Names}}' | grep -qx "$c"; then
+      docker rm -f "$c" >/dev/null 2>&1 || true
+    fi
+  done
   if [[ "$WIPE_VOLUMES" == "1" ]]; then
     say "  Running: docker compose down -v --remove-orphans"
     dc down -v --remove-orphans
@@ -334,6 +340,13 @@ main() {
     [[ "$code" == "200" ]] || die "static check failed: GET $st expected 200, got $code"
     say "  GET $st : 200 OK"
   fi
+
+  # UI static check (app.css)
+  local ui="$API_URL/static/ui/app.css"
+  local ui_code
+  ui_code="$(http_status "$ui")"
+  [[ "$ui_code" == "200" ]] || die "UI static check failed: GET $ui expected 200, got $ui_code"
+  say "  GET $ui : 200 OK"
 
   if [[ "$START_WORKER" == "1" ]]; then
     say ""
