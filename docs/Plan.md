@@ -24,26 +24,15 @@ Deliverables:
 * Store `bundle.zip` in S3/MinIO; write DB record.
 * Return `job_id`.
 
-### Phase 3 — Kubernetes job creation service
+### Phase 3 — Docker runner integration
 
-* A Django service module (or Celery task) that creates k8s Jobs.
-* Job spec hardening:
+* A worker loop that runs the `knime2py` container via `docker run`.
+* Hardening flags:
 
   * non-root, read-only rootfs, no privilege escalation
   * CPU/mem limits
-  * `activeDeadlineSeconds` hard timeout
-* NetworkPolicy + service accounts scoped to required endpoints.
-
-### Phase 4 — Runner image / job script
-
-* A tiny “runner” entrypoint in the job container that:
-
-  * downloads input
-  * unpacks safely
-  * runs `k2p`
-  * packs outputs
-  * uploads outputs
-  * returns correct exit code
+  * hard timeout
+* No network for the runner container.
 
 ### Phase 5 — End-to-end happy path + UI integration
 
@@ -121,4 +110,4 @@ Please implement “web-service readiness” for knime2py:
 * minimal workflow with a few nodes + their settings.xml
 * expected outputs committed as assertions (existence + basic sanity).
 
-This is needed to integrate knime2py into the k2p-web service that runs k8s Jobs and returns result.zip to users.
+This is needed to integrate knime2py into the k2p-web service that runs Docker jobs and returns result.zip to users.

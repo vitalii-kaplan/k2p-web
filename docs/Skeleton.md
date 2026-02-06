@@ -16,12 +16,7 @@ k2p-web/
       asgi.py
       wsgi.py
       urls.py
-      settings/
-        __init__.py
-        base.py
-        local.py
-        prod.py
-      logging.py                   # structured logging config (placeholder)
+      settings.py                  # Django settings (env-based)
 
     apps/
       core/
@@ -38,12 +33,7 @@ k2p-web/
         serializers.py
         views.py                   # POST /api/jobs, GET /api/jobs/{id}, GET result
         urls.py
-        services/
-          __init__.py
-          storage.py               # MinIO/S3 client wrapper
-          zip_validate.py          # server-side ZIP validator (strict)
-          k8s.py                   # create/read Jobs in cluster
-          runner_contract.py       # constants: image, args, output names, caps
+        runner.py                  # Docker runner (calls knime2py image)
       authz/
         __init__.py
         rate_limit.py              # IP hash + token bucket (placeholder)
@@ -60,41 +50,13 @@ k2p-web/
     tests/
       test_jobs_api.py
       test_zip_validator.py
-      test_k8s_job_spec.py
-
-  runner/
-    Dockerfile                     # builds a runner image (FROM knime2py image)
-    runner.py                      # download input, run k2p, upload result
-    requirements.txt               # minimal (requests / boto3) if needed
+      test_worker_logs.py
 
   deploy/
-    k8s/
-      base/
-        namespace.yaml
-        configmap-api.yaml
-        secret-api.example.yaml    # template only, no real secrets
-        postgres.yaml              # for dev clusters; prod likely managed DB
-        minio.yaml                 # for dev clusters; prod likely real S3
-        api-deployment.yaml
-        api-service.yaml
-        api-ingress.yaml
-        api-serviceaccount.yaml
-        api-rbac.yaml              # permissions to create Jobs
-        networkpolicy-api.yaml
-        networkpolicy-runner.yaml
-      jobs/
-        runner-job-template.yaml   # a Job manifest template (placeholders)
-      overlays/
-        dev/
-          kustomization.yaml
-          patches.yaml
-        prod/
-          kustomization.yaml
-          patches.yaml
+    nginx/
+      nginx.conf                   # reverse proxy + auth
 
   scripts/
-    kind-create.sh                 # local k8s
-    kind-load-images.sh            # load api/runner images into kind
     migrate.sh
     superuser.sh
 

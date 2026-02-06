@@ -10,6 +10,7 @@ Project-specific guidance for coding agents working in this repository.
 - Tests: `make test` (or `make test-py`, `make test-ui`)
 - Lint/format: `make lint`, `make fmt`
 - Docker dev stack: `make docker-dev-up`, logs via `make docker-api-logs` and `make docker-worker-logs`
+- Production compose: `make prod-up`, `make prod-down`, `make prod-check`
 
 ## Python environment
 
@@ -25,6 +26,8 @@ Project-specific guidance for coding agents working in this repository.
   - `api_db_settings` (API process)
   - `worker_db_settings` (worker process)
 - If metrics disagree between `:8000` and `:8001`, compare these two log events first.
+- Docker runner requires host-visible paths for job/result storage:
+  - `HOST_JOB_STORAGE_ROOT`, `HOST_RESULT_STORAGE_ROOT` should be set when running worker containers via Docker.
 
 ## Metrics conventions
 
@@ -35,6 +38,12 @@ Project-specific guidance for coding agents working in this repository.
   - `k2p_job_finished_total`
   - `k2p_job_duration_seconds_*`
 - Counter resets after restart are expected; do not treat them as data loss.
+
+## Runner behavior
+
+- Jobs are executed via Docker (`docker run`) inside the worker process.
+- Uploaded ZIP must contain `workflow.knime` at the top level (server-side validation enforces this).
+- The worker unzips into `_work`, searches for `workflow.knime`, and passes its parent directory to the runner.
 
 ## Testing rules
 

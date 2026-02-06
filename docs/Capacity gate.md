@@ -1,13 +1,13 @@
 Ok. Let's now develop "Job per request" we will change it later. But we will need to reject requests if the queue is full. With a message to the user that "Your request can't be processed right now, wait for 5 minutes" or something like it. Can we implement it? Where?
 
-Yes. Implement it in the **API layer, before you create the Kubernetes Job**. That’s the only place where you can reliably give a clean, user-friendly “try later” response. Kubernetes itself can throttle you (quota, scheduling), but it won’t produce a nice message.
+Yes. Implement it in the **API layer, before you enqueue the job**. That’s the only place where you can reliably give a clean, user-friendly “try later” response. The worker can only fail late.
 
 ## Where exactly
 
 In your Django API endpoint that accepts uploads, e.g.:
 
 * `api/apps/jobs/views.py` (POST `/api/jobs` or `/convert`)
-* backed by a helper in `api/apps/jobs/services/k8s.py` (Job creation)
+* backed by the worker loop (`api/apps/jobs/management/commands/k2p_worker.py`)
 * and settings in `api/k2pweb/settings/base.py` (limits)
 
 ## What to implement
@@ -38,21 +38,20 @@ You have two workable options:
 * Your `jobs` table already has `status`.
 * Treat `QUEUED` + `RUNNING` as “in-flight”.
 * Count: `SELECT count(*) FROM jobs WHERE status IN ('QUEUED','RUNNING')`
-* Only if under limit do you insert a new row and create the k8s Job.
+* Only if under limit do you insert a new row and let the worker pick it up.
 
-This is fast and doesn’t depend on k8s API responsiveness.
+This is fast and doesn’t depend on any external scheduler.
 
-**Option B: Query Kubernetes**
+**Option B: Query worker / runner state**
 
-* List Jobs/Pods by label (e.g., `app=k2p-runner`) and count active.
-* More moving parts, slower, and you still need DB status anyway.
+* Not recommended — DB status is the source of truth.
 
 ### 3) Race condition handling
 
 If two requests arrive at the same time, both might see “capacity available” and both submit. Fix by making the “check + accept” atomic, e.g.:
 
 * use a short DB transaction + Postgres advisory lock, or
-* accept that you may go slightly over the limit (often OK for MVP), and rely on k8s resource limits as the hard stop.
+* accept that you may go slightly over the limit (often OK for MVP), and rely on runner resource limits as the hard stop.
 
 For MVP, a transaction + advisory lock is the cleanest.
 
@@ -63,14 +62,9 @@ When API returns “busy”:
 * show the message
 * and respect `Retry-After` (disable button / auto-retry after ~300s if you want)
 
-## Why this is necessary even with k8s
+## Why this is necessary
 
-Kubernetes can reject pod scheduling under pressure, but:
-
-* it rejects late (after you already accepted the upload),
-* it’s not predictable,
-* it doesn’t produce user-grade errors.
-
-So the API must do admission control up front.
+The worker can reject work late (resource limits, runner failures), but that
+won’t give clean user-facing errors. The API must do admission control up front.
 
 If you want, I can give you the exact constants to add (settings), the exact statuses for the `jobs` model, and the precise response payload + HTTP status you should standardize on.

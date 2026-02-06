@@ -6,7 +6,7 @@ Make it trivial to do the basics:
 
 * `make dev` (or `./scripts/dev.sh`) → run server + worker
 * `make test` → run tests with the right interpreter
-* `make kind-up` / `make kind-down`
+* `make prod-check` (smoke checks using prod compose)
 
 This prevents the Anaconda/venv confusion from coming back.
 
@@ -59,13 +59,13 @@ In GitHub Actions:
 
 * run `python -m pytest` (not `pytest`)
 * run `ruff` or `flake8` + `black` (or `ruff format`)
-* run a minimal integration test that starts kind and runs one job (optional; can be nightly, not on every push)
+* run a minimal integration test that starts the prod compose stack and runs one job (optional; can be nightly)
 
 ### 7) Licensing, security, and docs
 
 * LICENSE (MIT/Apache-2.0 — pick one)
 * SECURITY.md (basic reporting instructions)
-* README: local dev, kind flow, API endpoints, retention policy, limits
+* README: local dev, Docker runner flow, API endpoints, retention policy, limits
 
 ## About “new repo and push”
 

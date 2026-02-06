@@ -152,6 +152,8 @@ docker-worker-up: ## Start worker container (local Docker runner)
 	  -e DB_ENGINE=$(DOCKER_DB_ENGINE) \
 	  -e REPO_ROOT=$(REPO_MOUNT) \
 	  -e HOST_REPO_ROOT=$(PWD) \
+	  -e HOST_JOB_STORAGE_ROOT=$(PWD)/var/jobs \
+	  -e HOST_RESULT_STORAGE_ROOT=$(PWD)/var/results \
 	  -e WORKER_METRICS_PORT=$(WORKER_METRICS_PORT) \
 	  -v "$(PWD):$(REPO_MOUNT)" \
 	  -v /var/run/docker.sock:/var/run/docker.sock \
