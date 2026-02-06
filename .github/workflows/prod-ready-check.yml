@@ -14,11 +14,13 @@ jobs:
       - name: Create CI .env from example
         run: |
           cp .env.example .env
+          printf '\nHOST_JOB_STORAGE_ROOT=%s\nHOST_RESULT_STORAGE_ROOT=%s\n' \
+            "$GITHUB_WORKSPACE/var/jobs" "$GITHUB_WORKSPACE/var/results" >> .env
           cat >> .env <<'EOF'
           DJANGO_DEBUG=0
           DJANGO_SECRET_KEY=ci-K2pWeb-2026-ProdCheck-LongRandomKey-7vN4pQ2mX9sL8tR6cH3dJ1
           DJANGO_ALLOWED_HOSTS=127.0.0.1,localhost
-          CSRF_TRUSTED_ORIGINS=https://127.0.0.1,https://localhost,http://127.0.0.1,http://localhost
+          CSRF_TRUSTED_ORIGINS=http://127.0.0.1:8000,http://localhost:8000
           DB_ENGINE=postgres
           DB_NAME=k2pweb
           DB_USER=k2pweb
