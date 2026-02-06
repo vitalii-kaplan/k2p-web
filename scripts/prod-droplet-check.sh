@@ -93,9 +93,9 @@ assert_status_in() {
 check_no_k8s_submit_errors() {
   say ""
   say "Step 14: Verify worker logs contain no kubectl/openapi errors"
-  # Look for kubectl openapi localhost:8080 error signature
-  if dc logs --tail=500 worker 2>/dev/null | rg -n "openapi/v2|localhost:8080|k8s_submit_failed|kubectl" >/dev/null; then
-    dc logs --tail=200 worker | rg -n "openapi/v2|localhost:8080|k8s_submit_failed|kubectl" || true
+  # Look for kubectl/openapi localhost:8080 error signature
+  if dc logs --tail=500 worker 2>/dev/null | grep -E "openapi/v2|localhost:8080|k8s_submit_failed|kubectl" >/dev/null; then
+    dc logs --tail=200 worker | grep -E "openapi/v2|localhost:8080|k8s_submit_failed|kubectl" || true
     die "Found legacy k8s/kubectl errors in worker logs. Ensure worker uses local Docker runner."
   fi
   say "  OK: no k8s/kubectl errors in worker logs"
