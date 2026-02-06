@@ -69,6 +69,8 @@ class JobCreateSerializer(serializers.Serializer):
         try:
             with zipfile.ZipFile(full_path, "r") as zf:
                 for name in zf.namelist():
+                    if name.startswith("__MACOSX/") or "/__MACOSX/" in name or Path(name).name.startswith("._"):
+                        continue
                     if not name.lower().endswith(".xml") and not name.lower().endswith("workflow.knime"):
                         continue
                     try:
@@ -87,6 +89,8 @@ class JobCreateSerializer(serializers.Serializer):
         # Extract settings.xml metadata and store per-file rows.
         with zipfile.ZipFile(full_path, "r") as zf:
             for name in zf.namelist():
+                if name.startswith("__MACOSX/") or "/__MACOSX/" in name or Path(name).name.startswith("._"):
+                    continue
                 if not name.lower().endswith("settings.xml"):
                     continue
                 factory = node_name = display_name = None

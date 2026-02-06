@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import tempfile
+import zipfile
 from pathlib import Path
 from unittest.mock import patch
 
@@ -20,7 +21,8 @@ class WorkerLogsTests(TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             job_root = Path(tmpdir) / "jobs" / "x"
             job_root.mkdir(parents=True, exist_ok=True)
-            (job_root / "test.zip").write_bytes(b"zip")
+            with zipfile.ZipFile(job_root / "test.zip", "w") as zf:
+                zf.writestr("workflow.knime", "<root></root>")
 
             with override_settings(JOB_STORAGE_ROOT=tmpdir, RESULT_STORAGE_ROOT=tmpdir):
                 with patch("apps.jobs.management.commands.k2p_worker.DockerRunner.run_job", return_value={"exit_code": 0}):
@@ -40,7 +42,8 @@ class WorkerLogsTests(TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             job_root = Path(tmpdir) / "jobs" / "y"
             job_root.mkdir(parents=True, exist_ok=True)
-            (job_root / "test.zip").write_bytes(b"zip")
+            with zipfile.ZipFile(job_root / "test.zip", "w") as zf:
+                zf.writestr("workflow.knime", "<root></root>")
 
             with override_settings(JOB_STORAGE_ROOT=tmpdir, RESULT_STORAGE_ROOT=tmpdir):
                 err = RunnerError("boom", exit_code=7, stderr_tail="oops")

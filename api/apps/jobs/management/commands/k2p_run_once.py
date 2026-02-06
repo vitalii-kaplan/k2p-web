@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import uuid
 from pathlib import Path
+import zipfile
+import shutil
 
 import logging
 
@@ -23,6 +25,19 @@ class Command(BaseCommand):
             raise SystemExit(f"Input zip not found: {zip_path}")
 
         out_dir = Path(settings.RESULT_STORAGE_ROOT) / "tmp-test" / str(uuid.uuid4())
+        work_dir = out_dir / "_work"
+        if work_dir.exists():
+            shutil.rmtree(work_dir, ignore_errors=True)
+        work_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            with zipfile.ZipFile(zip_path, "r") as zf:
+                for info in zf.infolist():
+                    name = info.filename
+                    if name.startswith("__MACOSX/") or "/__MACOSX/" in name or Path(name).name.startswith("._"):
+                        continue
+                    zf.extract(info, work_dir)
+        except zipfile.BadZipFile:
+            raise SystemExit("Input zip is invalid")
         runner = DockerRunner(
             docker_bin=getattr(settings, "DOCKER_BIN", "docker"),
             image=getattr(settings, "K2P_IMAGE", "ghcr.io/vitalii-kaplan/knime2py:main"),
@@ -42,7 +57,7 @@ class Command(BaseCommand):
         )
 
         try:
-            result = runner.run_job("tmp-test", zip_path, out_dir)
+            result = runner.run_job("tmp-test", work_dir, out_dir)
         except RunnerError as exc:
             self.stderr.write(self.style.ERROR(f"Runner failed: {exc}"))
             if exc.stderr_tail:

@@ -14,6 +14,10 @@ CURL_INSECURE="${CURL_INSECURE:-1}"  # 1 => curl -k for local/self-signed certs
 DEPLOY_FAIL_LEVEL="${DEPLOY_FAIL_LEVEL:-WARNING}"  # ERROR|WARNING|INFO
 CHECK_STATIC="${CHECK_STATIC:-1}"
 STATIC_TEST_PATH="${STATIC_TEST_PATH:-/static/admin/css/base.css}"
+CHECK_JOB_RUN="${CHECK_JOB_RUN:-1}"
+JOB_FIXTURE_ZIP="${JOB_FIXTURE_ZIP:-tests/data/discounts.zip}"
+JOB_WAIT_SECS="${JOB_WAIT_SECS:-120}"
+FORCE_JOB_RUN="${FORCE_JOB_RUN:-0}"
 
 repo_root() { git rev-parse --show-toplevel 2>/dev/null || pwd; }
 REPO_ROOT="$(repo_root)"
@@ -58,6 +62,22 @@ url_host() {
 CURL_HOST_HEADER=""
 DJANGO_ALLOWED_HOSTS_RAW=""
 
+setup_mac_jobdata_bind() {
+  if [[ "$(uname -s)" != "Darwin" ]]; then
+    return 0
+  fi
+
+  # Bind /data to a host-shared path so the worker can mount it via docker.sock.
+  # Repo root is shared by Docker Desktop by default.
+  local host_root="$REPO_ROOT/var"
+  mkdir -p "$host_root/jobs" "$host_root/results"
+
+  export JOBDATA_HOST_PATH="$host_root"
+  export HOST_JOB_STORAGE_ROOT="$host_root/jobs"
+  export HOST_RESULT_STORAGE_ROOT="$host_root/results"
+  say "  mac bind: JOBDATA_HOST_PATH=$JOBDATA_HOST_PATH"
+}
+
 setup_curl_host_header() {
   local api_host hosts first
   api_host="$(url_host "$API_URL")"
@@ -101,6 +121,53 @@ assert_status_in() {
     fi
   done
   die "GET $url expected one of [$expected], got $code"
+}
+
+run_job_smoke_test() {
+  say ""
+  say "Step 14: Job smoke test (upload + result.zip availability)"
+  local fixture="$REPO_ROOT/$JOB_FIXTURE_ZIP"
+  [[ -f "$fixture" ]] || die "missing job fixture: $fixture"
+
+  local job_json job_id status code
+  local tls_flag=()
+  [[ "$CURL_INSECURE" == "1" ]] && tls_flag=(-k)
+  if [[ -n "$CURL_HOST_HEADER" ]]; then
+    job_json="$(curl "${tls_flag[@]}" -sS -H "$CURL_HOST_HEADER" -X POST -F "bundle=@${fixture}" "$API_URL/api/jobs")"
+  else
+    job_json="$(curl "${tls_flag[@]}" -sS -X POST -F "bundle=@${fixture}" "$API_URL/api/jobs")"
+  fi
+  job_id="$(echo "$job_json" | python -c 'import sys,json; data=json.load(sys.stdin); print(data.get("id","") if isinstance(data, dict) else "")')"
+  [[ -n "$job_id" ]] || die "failed to parse job id from response: $job_json"
+  say "  job_id=$job_id"
+
+  local deadline=$((SECONDS + JOB_WAIT_SECS))
+  status=""
+  while (( SECONDS < deadline )); do
+    if [[ -n "$CURL_HOST_HEADER" ]]; then
+      status="$(curl "${tls_flag[@]}" -sS -H "$CURL_HOST_HEADER" "$API_URL/api/jobs/$job_id" | python -c 'import sys,json; data=json.load(sys.stdin); print(data.get("status","") if isinstance(data, dict) else "")')"
+    else
+      status="$(curl "${tls_flag[@]}" -sS "$API_URL/api/jobs/$job_id" | python -c 'import sys,json; data=json.load(sys.stdin); print(data.get("status","") if isinstance(data, dict) else "")')"
+    fi
+    if [[ "$status" == "SUCCEEDED" ]]; then
+      break
+    fi
+    if [[ "$status" == "FAILED" ]]; then
+      local err
+      if [[ -n "$CURL_HOST_HEADER" ]]; then
+        err="$(curl "${tls_flag[@]}" -sS -H "$CURL_HOST_HEADER" "$API_URL/api/jobs/$job_id" | python -c 'import sys,json; data=json.load(sys.stdin); print(data.get("error_message","") if isinstance(data, dict) else "")')"
+      else
+        err="$(curl "${tls_flag[@]}" -sS "$API_URL/api/jobs/$job_id" | python -c 'import sys,json; data=json.load(sys.stdin); print(data.get("error_message","") if isinstance(data, dict) else "")')"
+      fi
+      die "job failed: $err"
+    fi
+    sleep 1
+  done
+
+  [[ "$status" == "SUCCEEDED" ]] || die "job did not finish within ${JOB_WAIT_SECS}s (last=$status)"
+  code="$(http_status "$API_URL/api/jobs/$job_id/result.zip")"
+  [[ "$code" == "200" ]] || die "result.zip not downloadable (status=$code)"
+  say "  GET /api/jobs/$job_id/result.zip : 200 OK"
 }
 
 wait_http_200() {
@@ -236,6 +303,7 @@ main() {
   [[ "$REQUIRE_TLS" == "0" || "$API_URL" == https://* ]] || die "REQUIRE_TLS=1 but API_URL is not https://"
 
   check_env_sane
+  setup_mac_jobdata_bind
   setup_curl_host_header
   check_nginx_is_front
 
@@ -356,6 +424,21 @@ main() {
     worker_cid="$(wait_for_container_running worker || true)"
     [[ -n "$worker_cid" ]] || die "worker did not reach running state"
     say "  worker container: $worker_cid"
+    if [[ "$(uname -s)" == "Darwin" ]]; then
+      local src
+      src="$(docker inspect -f '{{range .Mounts}}{{if eq .Destination "/data"}}{{.Source}}{{end}}{{end}}' "$worker_cid" 2>/dev/null || true)"
+      local norm_src="$src"
+      if [[ "$norm_src" == /host_mnt/* ]]; then
+        norm_src="${norm_src#/host_mnt}"
+      fi
+      if [[ -z "$src" || "$norm_src" != "$JOBDATA_HOST_PATH" ]]; then
+        die "worker /data is not bound to host path. Expected $JOBDATA_HOST_PATH, got '${src:-none}'."
+      fi
+    fi
+  fi
+
+  if [[ "$CHECK_JOB_RUN" == "1" ]]; then
+    run_job_smoke_test
   fi
 
   say ""

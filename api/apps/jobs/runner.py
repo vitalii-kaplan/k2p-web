@@ -34,8 +34,8 @@ def _tail_file(path: Path, *, max_lines: int = 40, max_bytes: int = 4000) -> str
     return "\n".join(lines).strip()
 
 
-def build_k2p_args(input_zip: str = "/work/input.zip", out_dir: str = "/work/out") -> list[str]:
-    return ["--in-zip", input_zip, "--out", out_dir]
+def build_k2p_args(input_path: str = "/work/input", out_dir: str = "/work/out") -> list[str]:
+    return [input_path, "--out", out_dir]
 
 
 class DockerRunner:
@@ -123,11 +123,11 @@ class DockerRunner:
 
     def _build_args(self) -> list[str]:
         if self.args_template:
-            rendered = self.args_template.format(input="/work/input.zip", output="/work/out")
+            rendered = self.args_template.format(input="/work/input", output="/work/out")
             return shlex.split(rendered)
         return build_k2p_args()
 
-    def run_job(self, job_id: str, workflow_zip_path: Path, out_dir: Path) -> dict[str, Any]:
+    def run_job(self, job_id: str, workflow_path: Path, out_dir: Path) -> dict[str, Any]:
         name = f"k2pweb-job-{job_id}"
         out_dir.mkdir(parents=True, exist_ok=True)
         out_dir.chmod(0o777)
@@ -135,9 +135,30 @@ class DockerRunner:
         stdout_path = out_dir / "stdout.log"
         stderr_path = out_dir / "stderr.log"
 
-        host_in = self._resolve_host_path(workflow_zip_path)
+        host_in = self._resolve_host_path(workflow_path)
         host_out = self._resolve_host_path(out_dir)
         host_out.mkdir(parents=True, exist_ok=True)
+
+        # Validate the input path as seen inside the worker container.
+        if not workflow_path.exists():
+            raise RunnerError(
+                f"input_missing: {workflow_path}",
+                exit_code=None,
+                stdout_tail="",
+                stderr_tail="",
+            )
+        # If the host path is the same as the container path, also verify it exists.
+        if host_in == workflow_path and not host_in.exists():
+            raise RunnerError(
+                f"input_missing: {host_in}",
+                exit_code=None,
+                stdout_tail="",
+                stderr_tail="",
+            )
+        if host_in.is_dir():
+            mount_target = "/work/input"
+        else:
+            mount_target = "/work/input"
 
         self._ensure_image()
 
@@ -169,7 +190,7 @@ class DockerRunner:
             "--tmpfs",
             "/tmp:rw,noexec,nosuid,size=64m",
             "-v",
-            f"{host_in}:/work/input.zip:ro",
+            f"{host_in}:{mount_target}:ro",
             "-v",
             f"{host_out}:/work/out:rw",
             "-w",

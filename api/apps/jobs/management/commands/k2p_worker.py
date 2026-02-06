@@ -4,6 +4,8 @@ import json
 import logging
 import os
 import time
+import zipfile
+import shutil
 from pathlib import Path
 
 from prometheus_client import start_http_server
@@ -122,6 +124,27 @@ class Command(BaseCommand):
             )
             return
 
+        # Unzip workflow into a working directory for runner.
+        work_dir = out_dir / "_work"
+        if work_dir.exists():
+            shutil.rmtree(work_dir, ignore_errors=True)
+        work_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            with zipfile.ZipFile(in_host, "r") as zf:
+                for info in zf.infolist():
+                    name = info.filename
+                    if name.startswith("__MACOSX/") or "/__MACOSX/" in name or Path(name).name.startswith("._"):
+                        continue
+                    zf.extract(info, work_dir)
+        except zipfile.BadZipFile:
+            Job.objects.filter(id=job.id).update(
+                status=Job.Status.FAILED,
+                finished_at=timezone.now(),
+                error_code="invalid_zip",
+                error_message="input zip is invalid",
+            )
+            return
+
         finished_at = timezone.now()
         exit_code: int | None = None
         stdout_tail = ""
@@ -131,7 +154,7 @@ class Command(BaseCommand):
         error_message = ""
 
         try:
-            result = runner.run_job(str(job.id), in_host, out_dir)
+            result = runner.run_job(str(job.id), work_dir, out_dir)
             exit_code = result.get("exit_code")
             stdout_tail = result.get("stdout_tail", "") or ""
             stderr_tail = result.get("stderr_tail", "") or ""
@@ -151,7 +174,12 @@ class Command(BaseCommand):
             exit_code = exc.exit_code
             stdout_tail = exc.stdout_tail
             stderr_tail = exc.stderr_tail
-            error_message = f"runner_failed: exit={exc.exit_code}, stderr_tail={exc.stderr_tail[:1000]}"
+            msg = str(exc)
+            detail = f"{msg}" if msg else "runner_failed"
+            error_message = (
+                f"runner_failed: {detail} "
+                f"(exit={exc.exit_code}, stderr_tail={exc.stderr_tail[:1000]}, stdout_tail={exc.stdout_tail[:1000]})"
+            )
 
         result_key = f"jobs/{job.id}/"
         finished_at = timezone.now()

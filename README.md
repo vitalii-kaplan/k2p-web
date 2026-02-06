@@ -61,22 +61,6 @@ curl -sS "http://127.0.0.1:8000/api/jobs/$JOB_ID" | python -m json.tool
 curl -fL -o "result-$JOB_ID.zip" "http://127.0.0.1:8000/api/jobs/$JOB_ID/result.zip"
 ```
 
-## Local Kubernetes (kind)
-
-Prereqs: `docker`, `kubectl`, `kind`.
-
-Create cluster:
-
-```bash
-./scripts/kind-create.sh
-```
-
-Run one k2p job directly (debug):
-
-```bash
-./scripts/kind-run-k2p-job.sh
-```
-
 ## Storage layout
 
 Local default (dev):
@@ -91,7 +75,6 @@ Read from Django settings (environment or defaults):
 * `JOB_STORAGE_ROOT` — where uploads are stored (default `var/jobs`)
 * `RESULT_STORAGE_ROOT` — where results are written (default `var/results`)
 * `REPO_ROOT` — repo root path for K8s hostPath mapping (dev-only)
-* `K8S_NAMESPACE` — k8s namespace for jobs (default `k2p`)
 * `K2P_IMAGE` — container image to run `knime2py` (e.g. `ghcr.io/vitalii-kaplan/knime2py:main`)
 
 ## Tests

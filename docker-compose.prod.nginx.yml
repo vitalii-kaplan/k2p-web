@@ -59,7 +59,7 @@ services:
       - "8000"
     volumes:
       - staticfiles:/static
-      - jobdata:/data
+      - ${JOBDATA_HOST_PATH:-jobdata}:/data
 
   worker:
     build: .
@@ -82,13 +82,15 @@ services:
       STATIC_ROOT: "/static"
       JOB_STORAGE_ROOT: "/data/jobs"
       RESULT_STORAGE_ROOT: "/data/results"
+      HOST_JOB_STORAGE_ROOT: "${HOST_JOB_STORAGE_ROOT:-}"
+      HOST_RESULT_STORAGE_ROOT: "${HOST_RESULT_STORAGE_ROOT:-}"
     depends_on:
       postgres:
         condition: service_healthy
     command: ["python", "manage.py", "k2p_worker"]
     volumes:
       - staticfiles:/static
-      - jobdata:/data
+      - ${JOBDATA_HOST_PATH:-jobdata}:/data
       - /var/run/docker.sock:/var/run/docker.sock
 
   # One-off helper: run static collection into the shared volume
@@ -114,7 +116,7 @@ services:
     command: ["python", "manage.py", "collectstatic", "--noinput"]
     volumes:
       - staticfiles:/static
-      - jobdata:/data
+      - ${JOBDATA_HOST_PATH:-jobdata}:/data
     restart: "no"
     profiles: ["ops"]
 
