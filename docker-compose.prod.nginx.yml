@@ -59,7 +59,7 @@ services:
       - "8000"
     volumes:
       - staticfiles:/static
-      - ${JOBDATA_HOST_PATH:-jobdata}:/data
+      - ${JOBDATA_HOST_PATH:-./var}:/data
 
   worker:
     build: .
@@ -90,7 +90,7 @@ services:
     command: ["python", "manage.py", "k2p_worker"]
     volumes:
       - staticfiles:/static
-      - ${JOBDATA_HOST_PATH:-jobdata}:/data
+      - ${JOBDATA_HOST_PATH:-./var}:/data
       - /var/run/docker.sock:/var/run/docker.sock
 
   # One-off helper: run static collection into the shared volume
@@ -116,7 +116,7 @@ services:
     command: ["python", "manage.py", "collectstatic", "--noinput"]
     volumes:
       - staticfiles:/static
-      - ${JOBDATA_HOST_PATH:-jobdata}:/data
+      - ${JOBDATA_HOST_PATH:-./var}:/data
     restart: "no"
     profiles: ["ops"]
 
@@ -138,4 +138,3 @@ services:
 volumes:
   pgdata:
   staticfiles:
-  jobdata:
