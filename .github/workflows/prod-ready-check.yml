@@ -11,9 +11,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Create CI .env
+      - name: Create CI .env from example
         run: |
-          cat > .env <<'EOF'
+          cp .env.example .env
+          cat >> .env <<'EOF'
           DJANGO_DEBUG=0
           DJANGO_SECRET_KEY=ci-K2pWeb-2026-ProdCheck-LongRandomKey-7vN4pQ2mX9sL8tR6cH3dJ1
           DJANGO_ALLOWED_HOSTS=127.0.0.1,localhost
@@ -45,7 +46,7 @@ jobs:
       - name: Run production compose readiness check
         run: |
           chmod +x ./scripts/prod-ready-check.sh
-          COMPOSE_FILE=docker-compose.prod.nginx.yml API_URL=https://127.0.0.1 START_WORKER=0 REQUIRE_TLS=1 CURL_INSECURE=1 ./scripts/prod-ready-check.sh
+          COMPOSE_FILE=docker-compose.prod.nginx.yml API_URL=https://127.0.0.1 START_WORKER=1 REQUIRE_TLS=1 CURL_INSECURE=1 ./scripts/prod-ready-check.sh
 
       - name: Show compose logs on failure
         if: failure()
