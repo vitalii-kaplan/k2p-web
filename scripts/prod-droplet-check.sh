@@ -90,6 +90,17 @@ assert_status_in() {
   die "GET $url expected one of [$expected], got $code"
 }
 
+check_no_k8s_submit_errors() {
+  say ""
+  say "Step 14: Verify worker logs contain no kubectl/openapi errors"
+  # Look for kubectl openapi localhost:8080 error signature
+  if dc logs --tail=500 worker 2>/dev/null | rg -n "openapi/v2|localhost:8080|k8s_submit_failed|kubectl" >/dev/null; then
+    dc logs --tail=200 worker | rg -n "openapi/v2|localhost:8080|k8s_submit_failed|kubectl" || true
+    die "Found legacy k8s/kubectl errors in worker logs. Ensure worker uses local Docker runner."
+  fi
+  say "  OK: no k8s/kubectl errors in worker logs"
+}
+
 wait_for_container_running() {
   local svc="$1" deadline=$((SECONDS + 40)) cid=""
   while (( SECONDS < deadline )); do
@@ -301,6 +312,8 @@ main() {
     [[ -n "$worker_cid" ]] || die "worker did not reach running state"
     say "  worker container: $worker_cid"
   fi
+
+  check_no_k8s_submit_errors
 
   say ""
   say "DONE: droplet deploy checks passed."
