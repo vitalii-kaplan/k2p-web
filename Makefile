@@ -172,3 +172,32 @@ docker-worker-shell: ## Shell into worker container
 docker-dev-up: docker-build docker-migrate docker-api-up docker-worker-up ## Full dev stack (api + worker)
 
 docker-dev-down: docker-worker-down docker-api-down ## Stop dev containers
+
+# -----------------------
+# Production (droplet) via docker compose
+# -----------------------
+PROD_COMPOSE ?= docker-compose.prod.nginx.yml
+
+prod-up: ## Start production stack (api+nginx+postgres+worker)
+	docker compose -f $(PROD_COMPOSE) up -d --remove-orphans
+
+prod-down: ## Stop production stack
+	docker compose -f $(PROD_COMPOSE) down --remove-orphans
+
+prod-ps: ## Show production containers
+	docker compose -f $(PROD_COMPOSE) ps
+
+prod-api-logs: ## Tail API logs
+	docker compose -f $(PROD_COMPOSE) logs -f api
+
+prod-worker-logs: ## Tail worker logs
+	docker compose -f $(PROD_COMPOSE) logs -f worker
+
+prod-nginx-logs: ## Tail nginx logs
+	docker compose -f $(PROD_COMPOSE) logs -f nginx
+
+prod-migrate: ## Run migrations in production stack
+	docker compose -f $(PROD_COMPOSE) run --rm api python manage.py migrate
+
+prod-check: ## Run your production smoke-check script
+	./scripts/prod-droplet-check.sh
