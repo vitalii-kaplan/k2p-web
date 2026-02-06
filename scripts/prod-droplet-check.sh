@@ -24,6 +24,9 @@ CHECK_STATIC="${CHECK_STATIC:-1}"
 STATIC_TEST_PATH="${STATIC_TEST_PATH:-/static/admin/css/base.css}"
 UI_TEST_PATH="${UI_TEST_PATH:-/static/ui/app.css}"
 K2P_IMAGE="${K2P_IMAGE:-ghcr.io/vitalii-kaplan/knime2py:main}"
+CHECK_JOB_RUN="${CHECK_JOB_RUN:-1}"
+JOB_FIXTURE_ZIP="${JOB_FIXTURE_ZIP:-tests/data/discounts.zip}"
+JOB_WAIT_SECS="${JOB_WAIT_SECS:-180}"
 
 # Paths as mounted into nginx container
 CERT_DIR_HOST="${CERT_DIR_HOST:-./certs}"
@@ -89,6 +92,42 @@ assert_status_in() {
     fi
   done
   die "GET $url expected one of [$expected], got $code"
+}
+
+run_job_smoke_test() {
+  say ""
+  say "Step 17: Job smoke test (upload + result.zip availability)"
+  local fixture="$REPO_ROOT/$JOB_FIXTURE_ZIP"
+  [[ -f "$fixture" ]] || die "missing job fixture: $fixture"
+
+  local tls_flag=()
+  [[ "$CURL_INSECURE" == "1" ]] && tls_flag=(-k)
+
+  local job_json job_id status code
+  job_json="$(curl "${tls_flag[@]}" -sS -X POST -F "bundle=@${fixture}" "${BASE_HTTPS_URL}/api/jobs")"
+  job_id="$(echo "$job_json" | python -c 'import sys,json; data=json.load(sys.stdin); print(data.get("id","") if isinstance(data, dict) else "")')"
+  [[ -n "$job_id" ]] || die "failed to parse job id from response: $job_json"
+  say "  job_id=$job_id"
+
+  local deadline=$((SECONDS + JOB_WAIT_SECS))
+  status=""
+  while (( SECONDS < deadline )); do
+    status="$(curl "${tls_flag[@]}" -sS "${BASE_HTTPS_URL}/api/jobs/$job_id" | python -c 'import sys,json; data=json.load(sys.stdin); print(data.get("status","") if isinstance(data, dict) else "")')"
+    if [[ "$status" == "SUCCEEDED" ]]; then
+      break
+    fi
+    if [[ "$status" == "FAILED" ]]; then
+      local err
+      err="$(curl "${tls_flag[@]}" -sS "${BASE_HTTPS_URL}/api/jobs/$job_id" | python -c 'import sys,json; data=json.load(sys.stdin); print(data.get("error_message","") if isinstance(data, dict) else "")')"
+      die "job failed: $err"
+    fi
+    sleep 1
+  done
+
+  [[ "$status" == "SUCCEEDED" ]] || die "job did not finish within ${JOB_WAIT_SECS}s (last=$status)"
+  code="$(http_status "${BASE_HTTPS_URL}/api/jobs/$job_id/result.zip")"
+  [[ "$code" == "200" ]] || die "result.zip not downloadable (status=$code)"
+  say "  GET /api/jobs/$job_id/result.zip : 200 OK"
 }
 
 check_no_k8s_submit_errors() {
@@ -337,6 +376,9 @@ main() {
   check_no_k8s_submit_errors
   check_shared_job_dirs
   check_k2p_image_pull
+  if [[ "$CHECK_JOB_RUN" == "1" ]]; then
+    run_job_smoke_test
+  fi
 
   say ""
   say "DONE: droplet deploy checks passed."
