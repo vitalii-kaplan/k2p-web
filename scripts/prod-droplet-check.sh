@@ -117,13 +117,9 @@ run_job_smoke_test() {
       break
     fi
     if [[ "$status" == "FAILED" ]]; then
-      local resp err
+      local resp
       resp="$(curl "${tls_flag[@]}" -sS "${BASE_HTTPS_URL}/api/jobs/$job_id")"
-      err="$(echo "$resp" | sed -n 's/.*"error_message"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n1)"
-      if [[ -z "$err" || "$err" == "{" ]]; then
-        err="$resp"
-      fi
-      die "job failed: $err"
+      die "job failed. Full response: $resp"
     fi
     sleep 1
   done
