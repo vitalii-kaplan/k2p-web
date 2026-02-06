@@ -56,8 +56,13 @@ class Command(BaseCommand):
             logger=logging.getLogger("k2p.runner"),
         )
 
+        workflow_dir = work_dir
+        found = list(work_dir.rglob("workflow.knime"))
+        if found:
+            workflow_dir = found[0].parent
+
         try:
-            result = runner.run_job("tmp-test", work_dir, out_dir)
+            result = runner.run_job("tmp-test", workflow_dir, out_dir)
         except RunnerError as exc:
             self.stderr.write(self.style.ERROR(f"Runner failed: {exc}"))
             if exc.stderr_tail:

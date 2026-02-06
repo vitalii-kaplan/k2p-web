@@ -145,6 +145,11 @@ class Command(BaseCommand):
             )
             return
 
+        workflow_dir = work_dir
+        found = list(work_dir.rglob("workflow.knime"))
+        if found:
+            workflow_dir = found[0].parent
+
         finished_at = timezone.now()
         exit_code: int | None = None
         stdout_tail = ""
@@ -154,7 +159,7 @@ class Command(BaseCommand):
         error_message = ""
 
         try:
-            result = runner.run_job(str(job.id), work_dir, out_dir)
+            result = runner.run_job(str(job.id), workflow_dir, out_dir)
             exit_code = result.get("exit_code")
             stdout_tail = result.get("stdout_tail", "") or ""
             stderr_tail = result.get("stderr_tail", "") or ""
