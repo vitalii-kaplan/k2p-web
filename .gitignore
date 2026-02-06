@@ -1,5 +1,4 @@
 # Project specific
-*.zip
 tests/out/*
 tests/out-k8s/*
 .vscode
