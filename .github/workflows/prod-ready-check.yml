@@ -18,7 +18,7 @@ jobs:
           DJANGO_DEBUG=0
           DJANGO_SECRET_KEY=ci-K2pWeb-2026-ProdCheck-LongRandomKey-7vN4pQ2mX9sL8tR6cH3dJ1
           DJANGO_ALLOWED_HOSTS=127.0.0.1,localhost
-          CSRF_TRUSTED_ORIGINS=http://127.0.0.1:8000,http://localhost:8000
+          CSRF_TRUSTED_ORIGINS=https://127.0.0.1,https://localhost,http://127.0.0.1,http://localhost
           DB_ENGINE=postgres
           DB_NAME=k2pweb
           DB_USER=k2pweb
@@ -46,7 +46,16 @@ jobs:
       - name: Run production compose readiness check
         run: |
           chmod +x ./scripts/prod-ready-check.sh
-          COMPOSE_FILE=docker-compose.prod.nginx.yml API_URL=http://127.0.0.1 START_WORKER=1 REQUIRE_TLS=0 ./scripts/prod-ready-check.sh
+          COMPOSE_FILE=docker-compose.prod.nginx.yml \
+          API_URL=https://127.0.0.1 \
+          REQUIRE_TLS=1 \
+          CURL_INSECURE=1 \
+          START_WORKER=1 \
+          ./scripts/prod-ready-check.sh
+
+      - name: Verify HTTP->HTTPS redirect (after stack is up)
+        run: |
+          curl -sS -I http://127.0.0.1/healthz | grep -E '^Location: https://127\.0\.0\.1/healthz' >/dev/null
 
       - name: Show nginx logs
         if: always()
