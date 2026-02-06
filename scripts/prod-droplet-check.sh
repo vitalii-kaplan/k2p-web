@@ -23,6 +23,7 @@ DEPLOY_FAIL_LEVEL="${DEPLOY_FAIL_LEVEL:-WARNING}"  # ERROR|WARNING|INFO
 CHECK_STATIC="${CHECK_STATIC:-1}"
 STATIC_TEST_PATH="${STATIC_TEST_PATH:-/static/admin/css/base.css}"
 UI_TEST_PATH="${UI_TEST_PATH:-/static/ui/app.css}"
+K2P_IMAGE="${K2P_IMAGE:-ghcr.io/vitalii-kaplan/knime2py:main}"
 
 # Paths as mounted into nginx container
 CERT_DIR_HOST="${CERT_DIR_HOST:-./certs}"
@@ -103,12 +104,22 @@ check_no_k8s_submit_errors() {
 
 check_shared_job_dirs() {
   say ""
-  say "Step 14b: Verify shared job directories exist"
+  say "Step 15: Verify shared job directories exist"
   dc exec -T api sh -lc 'test -d /data/jobs && test -d /data/results' || \
     die "shared job dirs missing in api container (/data/jobs or /data/results)"
   dc exec -T worker sh -lc 'test -d /data/jobs && test -d /data/results' || \
     die "shared job dirs missing in worker container (/data/jobs or /data/results)"
   say "  OK: /data/jobs and /data/results present in api + worker"
+}
+
+check_k2p_image_pull() {
+  say ""
+  say "Step 16: Verify K2P image is available"
+  if ! docker image inspect "$K2P_IMAGE" >/dev/null 2>&1; then
+    say "  pulling $K2P_IMAGE ..."
+    docker pull "$K2P_IMAGE" || die "failed to pull $K2P_IMAGE (check GHCR auth / network)"
+  fi
+  say "  OK: image present ($K2P_IMAGE)"
 }
 
 wait_for_container_running() {
@@ -325,6 +336,7 @@ main() {
 
   check_no_k8s_submit_errors
   check_shared_job_dirs
+  check_k2p_image_pull
 
   say ""
   say "DONE: droplet deploy checks passed."

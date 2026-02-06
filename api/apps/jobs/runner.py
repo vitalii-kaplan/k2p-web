@@ -74,6 +74,27 @@ class DockerRunner:
         self.host_job_storage_root = host_job_storage_root
         self.host_result_storage_root = host_result_storage_root
 
+    def _ensure_image(self) -> None:
+        inspect = subprocess.run(
+            [self.docker_bin, "image", "inspect", self.image],
+            text=True,
+            capture_output=True,
+        )
+        if inspect.returncode == 0:
+            return
+        pull = subprocess.run(
+            [self.docker_bin, "pull", self.image],
+            text=True,
+            capture_output=True,
+        )
+        if pull.returncode != 0:
+            raise RunnerError(
+                "image_pull_failed",
+                exit_code=pull.returncode,
+                stdout_tail=(pull.stdout or "")[-1000:],
+                stderr_tail=(pull.stderr or "")[-1000:],
+            )
+
     def _resolve_host_path(self, path: Path) -> Path:
         if self.host_job_storage_root:
             try:
@@ -117,6 +138,8 @@ class DockerRunner:
         host_in = self._resolve_host_path(workflow_zip_path)
         host_out = self._resolve_host_path(out_dir)
         host_out.mkdir(parents=True, exist_ok=True)
+
+        self._ensure_image()
 
         entrypoint = self._build_command()
         entrypoint_arg: list[str] = []
