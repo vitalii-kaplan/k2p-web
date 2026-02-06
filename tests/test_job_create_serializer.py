@@ -94,6 +94,20 @@ class JobCreateSerializerTests(TestCase):
         self.assertEqual(meta.node_name, "X-Partitioner")
         self.assertEqual(meta.name, "X-Partitioner")
 
+    def test_fixture_discounts_zip_is_valid_workflow(self) -> None:
+        fixture = Path(__file__).resolve().parents[0] / "data" / "discounts.zip"
+        file_data = fixture.read_bytes()
+        upload = SimpleUploadedFile("discounts.zip", file_data, content_type="application/zip")
+
+        ser = JobCreateSerializer(data={"bundle": upload})
+        self.assertTrue(ser.is_valid(), ser.errors)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with override_settings(JOB_STORAGE_ROOT=tmpdir):
+                job = ser.save()
+
+        self.assertTrue(job.input_key.endswith("/discounts.zip"))
+
     def test_create_rejects_invalid_xml_in_zip(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             file_data = self._make_zip(
@@ -110,6 +124,25 @@ class JobCreateSerializerTests(TestCase):
             with override_settings(JOB_STORAGE_ROOT=tmpdir):
                 with self.assertRaises(serializers.ValidationError):
                     ser.save()
+
+    def test_create_rejects_missing_root_workflow(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            file_data = self._make_zip(
+                {
+                    "nested/workflow.knime": "<root></root>",
+                    "nested/settings.xml": "<settings></settings>",
+                }
+            )
+            upload = SimpleUploadedFile("nested.zip", file_data, content_type="application/zip")
+
+            ser = JobCreateSerializer(data={"bundle": upload})
+            self.assertTrue(ser.is_valid(), ser.errors)
+
+            with override_settings(JOB_STORAGE_ROOT=tmpdir):
+                with self.assertRaises(serializers.ValidationError) as exc:
+                    ser.save()
+
+        self.assertIn("workflow.knime must be at the top level", str(exc.exception))
 
     def _make_zip(self, files: dict[str, str]) -> bytes:
         buf = BytesIO()

@@ -68,7 +68,17 @@ class JobCreateSerializer(serializers.Serializer):
         # Validate XML files inside the zip
         try:
             with zipfile.ZipFile(full_path, "r") as zf:
-                for name in zf.namelist():
+                names = [
+                    n
+                    for n in zf.namelist()
+                    if not (n.startswith("__MACOSX/") or "/__MACOSX/" in n or Path(n).name.startswith("._"))
+                ]
+                has_root_workflow = any(n.lower() == "workflow.knime" for n in names)
+                if not has_root_workflow:
+                    raise serializers.ValidationError(
+                        "workflow.knime must be at the top level of the zip."
+                    )
+                for name in names:
                     if name.startswith("__MACOSX/") or "/__MACOSX/" in name or Path(name).name.startswith("._"):
                         continue
                     if not name.lower().endswith(".xml") and not name.lower().endswith("workflow.knime"):

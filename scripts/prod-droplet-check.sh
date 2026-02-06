@@ -96,7 +96,7 @@ assert_status_in() {
 
 run_job_smoke_test() {
   say ""
-  say "Step 17: Job smoke test (upload + result.zip availability)"
+  say "Step 18: Job smoke test (upload + result.zip availability)"
   local fixture="$REPO_ROOT/$JOB_FIXTURE_ZIP"
   [[ -f "$fixture" ]] || die "missing job fixture: $fixture"
 
@@ -159,6 +159,21 @@ check_k2p_image_pull() {
     docker pull "$K2P_IMAGE" || die "failed to pull $K2P_IMAGE (check GHCR auth / network)"
   fi
   say "  OK: image present ($K2P_IMAGE)"
+}
+
+check_fixture_contains_workflow() {
+  say ""
+  say "Step 17: Verify fixture zip contains workflow.knime"
+  local fixture="$REPO_ROOT/$JOB_FIXTURE_ZIP"
+  [[ -f "$fixture" ]] || die "missing job fixture: $fixture"
+  if command -v unzip >/dev/null 2>&1; then
+    if ! unzip -l "$fixture" | grep -q 'workflow\.knime'; then
+      die "fixture zip does not contain workflow.knime: $fixture"
+    fi
+    say "  OK: workflow.knime found in fixture"
+  else
+    say "  WARN: unzip not available; cannot verify workflow.knime in fixture"
+  fi
 }
 
 wait_for_container_running() {
@@ -376,6 +391,7 @@ main() {
   check_no_k8s_submit_errors
   check_shared_job_dirs
   check_k2p_image_pull
+  check_fixture_contains_workflow
   if [[ "$CHECK_JOB_RUN" == "1" ]]; then
     run_job_smoke_test
   fi
