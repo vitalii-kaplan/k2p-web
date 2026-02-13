@@ -13,7 +13,9 @@
         docker-api-up docker-api-down docker-api-logs docker-api-shell \
         docker-migrate \
         docker-worker-up docker-worker-down docker-worker-logs docker-worker-shell \
-        docker-dev-up docker-dev-down venv tag-release
+        docker-dev-up docker-dev-down venv tag-release \
+        prod-up prod-down prod-ps prod-api-logs prod-worker-logs prod-nginx-logs prod-migrate prod-check \
+        prod-clean-restart
 
 # Load .env into Make variables (and export them to subcommands), if present.
 ifneq (,$(wildcard .env))
@@ -203,3 +205,10 @@ prod-migrate: ## Run migrations in production stack
 
 prod-check: ## Run your production smoke-check script
 	./scripts/prod-droplet-check.sh
+
+prod-clean-restart: ## Rebuild + migrate + collectstatic + restart production stack
+	docker compose -f $(PROD_COMPOSE) down --remove-orphans
+	docker compose -f $(PROD_COMPOSE) build --no-cache --pull
+	docker compose -f $(PROD_COMPOSE) up -d --remove-orphans
+	docker compose -f $(PROD_COMPOSE) run --rm api python manage.py migrate
+	docker compose -f $(PROD_COMPOSE) run --rm api python manage.py collectstatic --noinput
