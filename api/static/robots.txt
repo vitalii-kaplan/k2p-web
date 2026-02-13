@@ -1,0 +1,6 @@
+User-agent: *
+Disallow: /admin/
+Disallow: /metrics
+Disallow: /api/
+Allow: /
+Sitemap: https://k2pweb.org/sitemap.xml
