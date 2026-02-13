@@ -61,6 +61,8 @@ IS_PYTEST = "PYTEST_CURRENT_TEST" in os.environ or "pytest" in sys.modules
 
 # Prefer DJANGO_DEBUG; accept DEBUG for backwards compatibility
 DEBUG = env_bool("DJANGO_DEBUG", env_bool("DEBUG", False)) or IS_PYTEST
+# Expose /readyz only in debug or when explicitly enabled.
+EXPOSE_READYZ = env_bool("EXPOSE_READYZ", False)
 # Expose /api/schema/ only in debug or when explicitly enabled.
 EXPOSE_SCHEMA = env_bool("EXPOSE_SCHEMA", False)
 

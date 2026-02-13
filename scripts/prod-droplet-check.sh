@@ -11,7 +11,7 @@ BASE_HTTPS_URL="${BASE_HTTPS_URL:-https://${DOMAIN}}"
 WIPE_VOLUMES="${WIPE_VOLUMES:-0}"
 BUILD="${BUILD:-0}"                 # usually 0 on droplet if you pull code already; set 1 if you rebuild there
 START_WORKER="${START_WORKER:-1}"
-CHECK_READYZ="${CHECK_READYZ:-1}"
+CHECK_READYZ="${CHECK_READYZ:-0}"
 WAIT_SECS="${WAIT_SECS:-90}"
 
 # If you use Cloudflare Origin cert, curl will not trust it by default -> -k needed for direct https to domain.

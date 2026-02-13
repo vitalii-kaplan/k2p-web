@@ -18,7 +18,7 @@ class CoreHealthTests(TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             jobs = Path(tmpdir) / "jobs"
             results = Path(tmpdir) / "results"
-            with override_settings(JOB_STORAGE_ROOT=str(jobs), RESULT_STORAGE_ROOT=str(results)):
+            with override_settings(JOB_STORAGE_ROOT=str(jobs), RESULT_STORAGE_ROOT=str(results), EXPOSE_READYZ=True):
                 resp = client.get("/readyz")
         self.assertEqual(resp.status_code, 200)
         data = resp.json()
@@ -34,10 +34,16 @@ class CoreHealthTests(TestCase):
             bad_dir.mkdir(parents=True, exist_ok=True)
             bad_dir.chmod(0o400)
             try:
-                with override_settings(JOB_STORAGE_ROOT=str(bad_dir), RESULT_STORAGE_ROOT=str(bad_dir)):
+                with override_settings(JOB_STORAGE_ROOT=str(bad_dir), RESULT_STORAGE_ROOT=str(bad_dir), EXPOSE_READYZ=True):
                     resp = client.get("/readyz")
             finally:
                 bad_dir.chmod(0o700)
         self.assertEqual(resp.status_code, 503)
         data = resp.json()
         self.assertEqual(data["status"], "fail")
+
+    def test_readyz_hidden_in_prod(self) -> None:
+        client = Client()
+        with override_settings(DEBUG=False, EXPOSE_READYZ=False):
+            resp = client.get("/readyz")
+        self.assertEqual(resp.status_code, 404)

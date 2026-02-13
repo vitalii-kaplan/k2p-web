@@ -13,6 +13,8 @@ def healthz(_request):
 
 
 def readyz(_request):
+    if not settings.DEBUG and not getattr(settings, "EXPOSE_READYZ", False):
+        return JsonResponse({"status": "not_found"}, status=404)
     checks: dict[str, str] = {}
     ok = True
 
