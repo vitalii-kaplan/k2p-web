@@ -5,9 +5,10 @@ import zipfile
 from pathlib import Path
 
 from django.conf import settings
+from django.core.exceptions import RequestDataTooBig
 from django.http import FileResponse
 from django.shortcuts import get_object_or_404
-from rest_framework import status
+from rest_framework import serializers, status
 from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -21,7 +22,8 @@ class JobsCreateView(APIView):
     parser_classes = [MultiPartParser, FormParser]
 
     def post(self, request):
-        queued_count = Job.objects.filter(status=Job.Status.QUEUED).count()
+        in_flight = [Job.Status.QUEUED, Job.Status.RUNNING]
+        queued_count = Job.objects.filter(status__in=in_flight).count()
         max_queued = getattr(settings, "MAX_QUEUED_JOBS", 50)
         if max_queued >= 0 and queued_count >= max_queued:
             ENQUEUE_REJECTED_TOTAL.inc()
@@ -35,13 +37,36 @@ class JobsCreateView(APIView):
                 },
                 status=status.HTTP_429_TOO_MANY_REQUESTS,
             )
+        try:
+            _ = request.data
+        except RequestDataTooBig:
+            return Response(
+                {"error": {"code": "payload_too_large", "message": "Upload too large."}},
+                status=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            )
         ser = JobCreateSerializer(data=request.data)
         if not ser.is_valid():
             return Response(
                 {"error": {"code": "invalid_request", "message": "Invalid input.", "details": ser.errors}},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        job = ser.save()
+        try:
+            job = ser.save()
+        except serializers.ValidationError as exc:
+            code = "invalid_request"
+            message = "Invalid input."
+            status_code = status.HTTP_400_BAD_REQUEST
+            if getattr(exc, "detail", None):
+                if getattr(exc, "get_codes", None):
+                    codes = exc.get_codes()
+                    if "too_large" in str(codes):
+                        code = "payload_too_large"
+                        message = "Upload too large."
+                        status_code = status.HTTP_413_REQUEST_ENTITY_TOO_LARGE
+            return Response(
+                {"error": {"code": code, "message": message}},
+                status=status_code,
+            )
         return Response(JobSerializer(job).data, status=status.HTTP_201_CREATED)
 
 

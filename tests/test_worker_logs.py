@@ -54,3 +54,22 @@ class WorkerLogsTests(TestCase):
         payload = json.loads(logger.info.call_args[0][0])
         self.assertEqual(payload["event"], "job_finished")
         self.assertEqual(payload["status"], "FAILED")
+
+    def test_job_timeout_marks_failed(self) -> None:
+        job = Job.objects.create(status=Job.Status.QUEUED, input_key="jobs/z/test.zip")
+        cmd = Command()
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            job_root = Path(tmpdir) / "jobs" / "z"
+            job_root.mkdir(parents=True, exist_ok=True)
+            with zipfile.ZipFile(job_root / "test.zip", "w") as zf:
+                zf.writestr("workflow.knime", "<root></root>")
+
+            with override_settings(JOB_STORAGE_ROOT=tmpdir, RESULT_STORAGE_ROOT=tmpdir):
+                err = RunnerError("timeout after 1s", exit_code=None, stderr_tail="timeout")
+                with patch("apps.jobs.management.commands.k2p_worker.DockerRunner.run_job", side_effect=err):
+                    cmd._run_one(runner=cmd._build_runner())
+
+        job.refresh_from_db()
+        self.assertEqual(job.status, Job.Status.FAILED)
+        self.assertIn("timeout", job.error_message)

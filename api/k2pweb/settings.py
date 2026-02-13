@@ -199,6 +199,17 @@ RESULT_STORAGE_ROOT = resolve_under_repo(os.environ.get("RESULT_STORAGE_ROOT", "
 JOB_STORAGE_ROOT.mkdir(parents=True, exist_ok=True)
 RESULT_STORAGE_ROOT.mkdir(parents=True, exist_ok=True)
 
+# Upload and ZIP limits (abuse control)
+MAX_UPLOAD_BYTES = env_int("MAX_UPLOAD_BYTES", 50 * 1024 * 1024)
+MAX_ZIP_FILES = env_int("MAX_ZIP_FILES", 2000)
+MAX_ZIP_PATH_DEPTH = env_int("MAX_ZIP_PATH_DEPTH", 20)
+MAX_UNPACKED_BYTES = env_int("MAX_UNPACKED_BYTES", 300 * 1024 * 1024)
+MAX_FILE_BYTES = env_int("MAX_FILE_BYTES", 50 * 1024 * 1024)
+
+# Django upload guards
+DATA_UPLOAD_MAX_MEMORY_SIZE = MAX_UPLOAD_BYTES
+FILE_UPLOAD_MAX_MEMORY_SIZE = MAX_UPLOAD_BYTES
+
 STORAGES = {
     "default": {
         "BACKEND": "django.core.files.storage.FileSystemStorage",
@@ -219,7 +230,8 @@ MAX_QUEUED_JOBS = int(os.environ.get("MAX_QUEUED_JOBS", "50"))
 # Runner configuration (local Docker runner)
 JOB_RUNNER_BACKEND = env_str("JOB_RUNNER_BACKEND", "docker")
 K2P_IMAGE = env_str("K2P_IMAGE", "ghcr.io/vitalii-kaplan/knime2py:main")
-K2P_TIMEOUT_SECS = env_int("K2P_TIMEOUT_SECS", 300)
+JOB_TIMEOUT_SECS = env_int("JOB_TIMEOUT_SECS", 120)
+K2P_TIMEOUT_SECS = env_int("K2P_TIMEOUT_SECS", JOB_TIMEOUT_SECS)
 K2P_CPU = env_str("K2P_CPU", "1.0")
 K2P_MEMORY = env_str("K2P_MEMORY", "1g")
 K2P_PIDS_LIMIT = env_str("K2P_PIDS_LIMIT", "256")

@@ -11,6 +11,7 @@ from django.conf import settings
 from django.core.management.base import BaseCommand
 
 from apps.jobs.runner import DockerRunner, RunnerError
+from apps.jobs.security import ZipLimits, ZipValidationError, safe_extract_zip
 
 
 class Command(BaseCommand):
@@ -30,18 +31,21 @@ class Command(BaseCommand):
             shutil.rmtree(work_dir, ignore_errors=True)
         work_dir.mkdir(parents=True, exist_ok=True)
         try:
-            with zipfile.ZipFile(zip_path, "r") as zf:
-                for info in zf.infolist():
-                    name = info.filename
-                    if name.startswith("__MACOSX/") or "/__MACOSX/" in name or Path(name).name.startswith("._"):
-                        continue
-                    zf.extract(info, work_dir)
+            limits = ZipLimits(
+                max_files=getattr(settings, "MAX_ZIP_FILES", 2000),
+                max_path_depth=getattr(settings, "MAX_ZIP_PATH_DEPTH", 20),
+                max_unpacked_bytes=getattr(settings, "MAX_UNPACKED_BYTES", 300 * 1024 * 1024),
+                max_file_bytes=getattr(settings, "MAX_FILE_BYTES", 50 * 1024 * 1024),
+            )
+            safe_extract_zip(zip_path, work_dir, limits=limits)
         except zipfile.BadZipFile:
             raise SystemExit("Input zip is invalid")
+        except ZipValidationError as exc:
+            raise SystemExit(f"{exc.code}: {exc.message}")
         runner = DockerRunner(
             docker_bin=getattr(settings, "DOCKER_BIN", "docker"),
             image=getattr(settings, "K2P_IMAGE", "ghcr.io/vitalii-kaplan/knime2py:main"),
-            timeout_s=int(getattr(settings, "K2P_TIMEOUT_SECS", 300)),
+            timeout_s=int(getattr(settings, "JOB_TIMEOUT_SECS", getattr(settings, "K2P_TIMEOUT_SECS", 300))),
             cpu=str(getattr(settings, "K2P_CPU", "1.0")),
             memory=str(getattr(settings, "K2P_MEMORY", "1g")),
             pids_limit=str(getattr(settings, "K2P_PIDS_LIMIT", "256")),

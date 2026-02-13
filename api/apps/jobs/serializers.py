@@ -14,22 +14,27 @@ from rest_framework import serializers
 
 from .models import Job, JobSettingsMeta
 from .metrics_api import JOB_CREATED_TOTAL
+from .security import ZipLimits, ZipValidationError, validate_zipfile
 
 logger = logging.getLogger("k2p.jobs")
 
 class JobCreateSerializer(serializers.Serializer):
     bundle = serializers.FileField()
 
-    # hard limits for MVP
-    max_size_bytes = 100 * 1024 * 1024  # 100 MiB
-
     def validate_bundle(self, f) -> Any:
+        content_type = getattr(f, "content_type", "") or ""
         name = getattr(f, "name", "")
         if not name.lower().endswith(".zip"):
             raise serializers.ValidationError("Only .zip files are accepted.")
-        size = getattr(f, "size", None)
-        if size is not None and size > self.max_size_bytes:
-            raise serializers.ValidationError(f"File too large (max {self.max_size_bytes} bytes).")
+        allowed_types = {
+            "",
+            "application/zip",
+            "application/x-zip-compressed",
+            "multipart/x-zip",
+            "application/octet-stream",
+        }
+        if content_type not in allowed_types:
+            raise serializers.ValidationError("Invalid content type for zip upload.")
         return f
 
     @staticmethod
@@ -46,6 +51,52 @@ class JobCreateSerializer(serializers.Serializer):
             original_filename=getattr(f, "name", "")[:255],
             input_size=getattr(f, "size", 0) or 0,
         )
+        max_upload = getattr(settings, "MAX_UPLOAD_BYTES", 50 * 1024 * 1024)
+        if job.input_size and max_upload >= 0 and job.input_size > max_upload:
+            job.status = Job.Status.FAILED
+            job.error_code = "upload_too_large"
+            job.error_message = f"Upload too large (max {max_upload} bytes)."
+            job.save(update_fields=["status", "error_code", "error_message"])
+            raise serializers.ValidationError(job.error_message, code="too_large")
+
+        try:
+            f.seek(0)
+            with zipfile.ZipFile(f, "r") as zf:
+                limits = ZipLimits(
+                    max_files=getattr(settings, "MAX_ZIP_FILES", 2000),
+                    max_path_depth=getattr(settings, "MAX_ZIP_PATH_DEPTH", 20),
+                    max_unpacked_bytes=getattr(settings, "MAX_UNPACKED_BYTES", 300 * 1024 * 1024),
+                    max_file_bytes=getattr(settings, "MAX_FILE_BYTES", 50 * 1024 * 1024),
+                )
+                names = validate_zipfile(zf, limits)
+                names = [
+                    n
+                    for n in names
+                    if not (n.startswith("__MACOSX/") or "/__MACOSX/" in n or Path(n).name.startswith("._"))
+                ]
+                has_root_workflow = any(n.lower() == "workflow.knime" for n in names)
+                if not has_root_workflow:
+                    raise ZipValidationError(
+                        "missing_workflow_root",
+                        "workflow.knime must be at the top level of the zip.",
+                    )
+        except ZipValidationError as exc:
+            job.status = Job.Status.FAILED
+            job.error_code = exc.code
+            job.error_message = exc.message
+            job.save(update_fields=["status", "error_code", "error_message"])
+            raise serializers.ValidationError(exc.message, code=exc.code) from exc
+        except zipfile.BadZipFile as exc:
+            job.status = Job.Status.FAILED
+            job.error_code = "invalid_zip"
+            job.error_message = "Uploaded file is not a valid ZIP archive."
+            job.save(update_fields=["status", "error_code", "error_message"])
+            raise serializers.ValidationError(job.error_message) from exc
+        finally:
+            try:
+                f.seek(0)
+            except Exception:
+                pass
 
         stem = self._safe_stem(getattr(f, "name", "bundle.zip"))
         # Store under JOB_STORAGE_ROOT/jobs/<uuid>/<stem>.zip (repo-local var/ for dev)
@@ -68,16 +119,18 @@ class JobCreateSerializer(serializers.Serializer):
         # Validate XML files inside the zip
         try:
             with zipfile.ZipFile(full_path, "r") as zf:
+                limits = ZipLimits(
+                    max_files=getattr(settings, "MAX_ZIP_FILES", 2000),
+                    max_path_depth=getattr(settings, "MAX_ZIP_PATH_DEPTH", 20),
+                    max_unpacked_bytes=getattr(settings, "MAX_UNPACKED_BYTES", 300 * 1024 * 1024),
+                    max_file_bytes=getattr(settings, "MAX_FILE_BYTES", 50 * 1024 * 1024),
+                )
+                names = validate_zipfile(zf, limits)
                 names = [
                     n
-                    for n in zf.namelist()
+                    for n in names
                     if not (n.startswith("__MACOSX/") or "/__MACOSX/" in n or Path(n).name.startswith("._"))
                 ]
-                has_root_workflow = any(n.lower() == "workflow.knime" for n in names)
-                if not has_root_workflow:
-                    raise serializers.ValidationError(
-                        "workflow.knime must be at the top level of the zip."
-                    )
                 for name in names:
                     if name.startswith("__MACOSX/") or "/__MACOSX/" in name or Path(name).name.startswith("._"):
                         continue
@@ -88,13 +141,25 @@ class JobCreateSerializer(serializers.Serializer):
                         ET.fromstring(data)
                     except ET.ParseError as exc:
                         raise serializers.ValidationError(f"Invalid XML in {name}.") from exc
-        except (zipfile.BadZipFile, serializers.ValidationError) as exc:
+        except (zipfile.BadZipFile, serializers.ValidationError, ZipValidationError) as exc:
             # cleanup on invalid archive or XML
             full_path.unlink(missing_ok=True)
-            job.delete()
+            job.status = Job.Status.FAILED
             if isinstance(exc, zipfile.BadZipFile):
-                raise serializers.ValidationError("Uploaded file is not a valid ZIP archive.") from exc
-            raise
+                job.error_code = "invalid_zip"
+                job.error_message = "Uploaded file is not a valid ZIP archive."
+            elif isinstance(exc, ZipValidationError):
+                job.error_code = exc.code
+                job.error_message = exc.message
+            else:
+                job.error_code = "invalid_xml"
+                job.error_message = str(exc)
+            job.save(update_fields=["status", "error_code", "error_message"])
+            if isinstance(exc, zipfile.BadZipFile):
+                raise serializers.ValidationError(job.error_message) from exc
+            if isinstance(exc, ZipValidationError):
+                raise serializers.ValidationError(exc.message, code=exc.code) from exc
+            raise serializers.ValidationError(job.error_message) from exc
 
         # Extract settings.xml metadata and store per-file rows.
         with zipfile.ZipFile(full_path, "r") as zf:

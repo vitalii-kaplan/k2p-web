@@ -32,9 +32,10 @@ class JobCreateSerializerTests(TestCase):
     def test_validate_bundle_rejects_oversize(self) -> None:
         upload = SimpleUploadedFile("big.zip", b"xx", content_type="application/zip")
         ser = JobCreateSerializer(data={"bundle": upload})
-        ser.max_size_bytes = 1
-        self.assertFalse(ser.is_valid())
-        self.assertIn("bundle", ser.errors)
+        self.assertTrue(ser.is_valid(), ser.errors)
+        with override_settings(MAX_UPLOAD_BYTES=1):
+            with self.assertRaises(serializers.ValidationError):
+                ser.save()
 
     def test_create_uses_original_stem_in_input_key(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

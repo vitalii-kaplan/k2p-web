@@ -79,6 +79,16 @@ Read from Django settings (environment or defaults):
 * `K2P_TIMEOUT_SECS`, `K2P_CPU`, `K2P_MEMORY`, `K2P_PIDS_LIMIT` — Docker runner limits
 * `K2P_COMMAND`, `K2P_ARGS_TEMPLATE` — optional overrides for the runner
 * `HOST_JOB_STORAGE_ROOT`, `HOST_RESULT_STORAGE_ROOT` — host paths for Docker-in-Docker runner mounts
+* `MAX_UPLOAD_BYTES`, `MAX_ZIP_FILES`, `MAX_ZIP_PATH_DEPTH`, `MAX_UNPACKED_BYTES`, `MAX_FILE_BYTES` — abuse controls for uploads
+* `MAX_QUEUED_JOBS` — backpressure threshold (QUEUED+RUNNING)
+
+## Abuse control defaults
+
+The API rejects:
+
+* uploads larger than `MAX_UPLOAD_BYTES` (default 50MB)
+* zips with too many files, too deep paths, or too large uncompressed size
+* zips with absolute paths, `..` traversal, symlinks, or encrypted entries
 
 ## Tests
 
