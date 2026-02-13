@@ -238,9 +238,22 @@ K2P_PIDS_LIMIT = env_str("K2P_PIDS_LIMIT", "256")
 K2P_COMMAND = env_str("K2P_COMMAND", "")
 K2P_ARGS_TEMPLATE = env_str("K2P_ARGS_TEMPLATE", "")
 DOCKER_BIN = env_str("DOCKER_BIN", "docker")
+def _normalize_host_path(value: str, host_repo_root: str) -> str:
+    if not value:
+        return ""
+    path = Path(value)
+    if path.is_absolute():
+        return str(path)
+    if host_repo_root:
+        return str((Path(host_repo_root) / path).resolve())
+    return value
+
+
 HOST_REPO_ROOT = env_str("HOST_REPO_ROOT", "")
-HOST_JOB_STORAGE_ROOT = env_str("HOST_JOB_STORAGE_ROOT", "")
-HOST_RESULT_STORAGE_ROOT = env_str("HOST_RESULT_STORAGE_ROOT", "")
+if HOST_REPO_ROOT and not Path(HOST_REPO_ROOT).is_absolute():
+    HOST_REPO_ROOT = ""
+HOST_JOB_STORAGE_ROOT = _normalize_host_path(env_str("HOST_JOB_STORAGE_ROOT", ""), HOST_REPO_ROOT)
+HOST_RESULT_STORAGE_ROOT = _normalize_host_path(env_str("HOST_RESULT_STORAGE_ROOT", ""), HOST_REPO_ROOT)
 
 # Expose as strings too (some code may expect str)
 JOB_STORAGE_ROOT_STR = str(JOB_STORAGE_ROOT)

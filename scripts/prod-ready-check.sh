@@ -4,7 +4,7 @@ set -euo pipefail
 COMPOSE_FILE="${COMPOSE_FILE:-docker-compose.prod.nginx.yml}"
 API_URL="${API_URL:-https://127.0.0.1}"   # hits nginx
 WIPE_VOLUMES="${WIPE_VOLUMES:-0}"
-START_WORKER="${START_WORKER:-0}"
+START_WORKER="${START_WORKER:-1}"
 CHECK_READYZ="${CHECK_READYZ:-0}"
 REQUIRE_TLS="${REQUIRE_TLS:-1}"
 BUILD="${BUILD:-1}"

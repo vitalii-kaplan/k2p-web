@@ -3,6 +3,7 @@
 # make docker-api-logs
 # make docker-worker-logs
 # make docker-dev-down 
+# make prod-clean-restart
 #************************************************************************#
 
 .DEFAULT_GOAL := help
@@ -15,6 +16,7 @@
         docker-worker-up docker-worker-down docker-worker-logs docker-worker-shell \
         docker-dev-up docker-dev-down venv tag-release \
         prod-up prod-down prod-ps prod-api-logs prod-worker-logs prod-nginx-logs prod-migrate prod-check \
+        update-cf-ips \
         prod-clean-restart
 
 # Load .env into Make variables (and export them to subcommands), if present.
@@ -206,8 +208,12 @@ prod-migrate: ## Run migrations in production stack
 prod-check: ## Run your production smoke-check script
 	./scripts/prod-droplet-check.sh
 
+update-cf-ips: ## Refresh Cloudflare IP allowlist for nginx real_ip
+	./scripts/update_cloudflare_ips.sh
+
 prod-clean-restart: ## Rebuild + migrate + collectstatic + restart production stack
 	docker compose -f $(PROD_COMPOSE) down --remove-orphans
+	./scripts/update_cloudflare_ips.sh
 	docker compose -f $(PROD_COMPOSE) build --no-cache --pull
 	docker compose -f $(PROD_COMPOSE) up -d --remove-orphans
 	docker compose -f $(PROD_COMPOSE) run --rm api python manage.py migrate

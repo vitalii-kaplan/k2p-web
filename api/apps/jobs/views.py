@@ -7,7 +7,7 @@ from pathlib import Path
 from django.conf import settings
 from django.core.exceptions import RequestDataTooBig
 from django.http import FileResponse
-from django.db import transaction
+from django.db import connection, transaction
 from django.shortcuts import get_object_or_404
 from rest_framework import serializers, status
 from rest_framework.parsers import FormParser, MultiPartParser
@@ -26,12 +26,10 @@ class JobsCreateView(APIView):
         in_flight = [Job.Status.QUEUED, Job.Status.RUNNING]
         max_queued = getattr(settings, "MAX_QUEUED_JOBS", 50)
         with transaction.atomic():
+            if settings.DATABASES["default"]["ENGINE"].endswith("postgresql"):
+                with connection.cursor() as cursor:
+                    cursor.execute("SELECT pg_advisory_xact_lock(%s)", [424242])
             if max_queued >= 0:
-                _ = (
-                    Job.objects.select_for_update()
-                    .filter(status__in=in_flight)
-                    .values("id")[:1]
-                )
                 queued_count = Job.objects.filter(status__in=in_flight).count()
                 if queued_count >= max_queued:
                     ENQUEUE_REJECTED_TOTAL.inc()

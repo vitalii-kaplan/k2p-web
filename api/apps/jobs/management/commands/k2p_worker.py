@@ -43,6 +43,8 @@ class Command(BaseCommand):
     def handle(self, *args, **opts):
         sleep_s = float(opts["sleep"])
         runner = self._build_runner()
+        cleanup_interval_s = int(getattr(settings, "RETENTION_CLEANUP_INTERVAL_SECS", 300))
+        next_cleanup = time.time() + cleanup_interval_s
 
         # Expose worker metrics
         addr = os.environ.get("WORKER_METRICS_ADDR", "0.0.0.0")
@@ -54,7 +56,9 @@ class Command(BaseCommand):
             while True:
                 try:
                     self._run_one(runner=runner)
-                    self._cleanup_old_jobs()
+                    if cleanup_interval_s > 0 and time.time() >= next_cleanup:
+                        self._cleanup_old_jobs()
+                        next_cleanup = time.time() + cleanup_interval_s
                     WORKER_HEARTBEAT_TIMESTAMP_SECONDS.set(time.time())
                 except Exception:  # noqa: BLE001
                     WORKER_ERRORS_TOTAL.inc()
@@ -255,7 +259,13 @@ class Command(BaseCommand):
             job.delete()
 
     def _delete_job_artifacts(self, job: Job) -> None:
-        job_dir = Path(settings.JOB_STORAGE_ROOT) / f"jobs/{job.id}"
-        result_dir = Path(settings.RESULT_STORAGE_ROOT) / f"jobs/{job.id}"
+        job_root = Path(settings.JOB_STORAGE_ROOT).resolve()
+        result_root = Path(settings.RESULT_STORAGE_ROOT).resolve()
+        job_dir = (job_root / f"jobs/{job.id}").resolve()
+        result_dir = (result_root / f"jobs/{job.id}").resolve()
+        if job_dir == job_root or job_root not in job_dir.parents:
+            return
+        if result_dir == result_root or result_root not in result_dir.parents:
+            return
         shutil.rmtree(job_dir, ignore_errors=True)
         shutil.rmtree(result_dir, ignore_errors=True)

@@ -11,6 +11,7 @@ from django.test import TestCase, override_settings
 from apps.jobs.management.commands.k2p_worker import Command
 from apps.jobs.models import Job
 from apps.jobs.runner import RunnerError
+from apps.jobs.security import ZipValidationError
 
 
 class WorkerLogsTests(TestCase):
@@ -73,3 +74,22 @@ class WorkerLogsTests(TestCase):
         job.refresh_from_db()
         self.assertEqual(job.status, Job.Status.FAILED)
         self.assertIn("timeout", job.error_message)
+
+    def test_zip_validation_error_marks_failed(self) -> None:
+        job = Job.objects.create(status=Job.Status.QUEUED, input_key="jobs/a/test.zip")
+        cmd = Command()
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            job_root = Path(tmpdir) / "jobs" / "a"
+            job_root.mkdir(parents=True, exist_ok=True)
+            with zipfile.ZipFile(job_root / "test.zip", "w") as zf:
+                zf.writestr("workflow.knime", "<root></root>")
+
+            with override_settings(JOB_STORAGE_ROOT=tmpdir, RESULT_STORAGE_ROOT=tmpdir):
+                err = ZipValidationError("zip_bomb", "Zip exceeds maximum total uncompressed size.")
+                with patch("apps.jobs.management.commands.k2p_worker.safe_extract_zip", side_effect=err):
+                    cmd._run_one(runner=cmd._build_runner())
+
+        job.refresh_from_db()
+        self.assertEqual(job.status, Job.Status.FAILED)
+        self.assertEqual(job.error_code, "zip_bomb")

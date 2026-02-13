@@ -82,6 +82,7 @@ services:
       STATIC_ROOT: "/static"
       JOB_STORAGE_ROOT: "/data/jobs"
       RESULT_STORAGE_ROOT: "/data/results"
+      HOST_REPO_ROOT: "${HOST_REPO_ROOT:-}"
       HOST_JOB_STORAGE_ROOT: "${HOST_JOB_STORAGE_ROOT:-}"
       HOST_RESULT_STORAGE_ROOT: "${HOST_RESULT_STORAGE_ROOT:-}"
     depends_on:

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from io import BytesIO
 import zipfile
+from unittest.mock import patch
 
 from django.test import TestCase, override_settings
 from rest_framework.test import APIClient
@@ -26,6 +27,9 @@ class AbuseControlTests(TestCase):
         with override_settings(MAX_QUEUED_JOBS=0):
             resp = client.post("/api/jobs", data={"bundle": upload}, format="multipart")
         self.assertEqual(resp.status_code, 429)
+        payload = resp.json()
+        self.assertEqual(payload["error"]["code"], "queue_full")
+        self.assertIn("counted_statuses", payload["error"]["details"])
 
     def test_upload_too_large_returns_413(self) -> None:
         client = APIClient()
@@ -85,3 +89,18 @@ class AbuseControlTests(TestCase):
         with override_settings(MAX_QUEUED_JOBS=1):
             resp = client.post("/api/jobs", data={"bundle": upload}, format="multipart")
         self.assertEqual(resp.status_code, 429)
+
+    def test_zip_encrypted_rejected(self) -> None:
+        client = APIClient()
+        buf = BytesIO()
+        with zipfile.ZipFile(buf, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+            info = zipfile.ZipInfo("workflow.knime")
+            info.flag_bits |= 0x1
+            zf.writestr(info, b"<root></root>")
+        upload = SimpleUploadedFile("enc.zip", buf.getvalue(), content_type="application/zip")
+        encrypted = zipfile.ZipInfo("workflow.knime")
+        encrypted.flag_bits |= 0x1
+        encrypted.file_size = 1
+        with patch("apps.jobs.security.zipfile.ZipFile.infolist", return_value=[encrypted]):
+            resp = client.post("/api/jobs", data={"bundle": upload}, format="multipart")
+        self.assertEqual(resp.status_code, 400)
