@@ -6,6 +6,7 @@ import os
 import time
 import zipfile
 import shutil
+import datetime
 from pathlib import Path
 
 from prometheus_client import start_http_server
@@ -53,6 +54,7 @@ class Command(BaseCommand):
             while True:
                 try:
                     self._run_one(runner=runner)
+                    self._cleanup_old_jobs()
                     WORKER_HEARTBEAT_TIMESTAMP_SECONDS.set(time.time())
                 except Exception:  # noqa: BLE001
                     WORKER_ERRORS_TOTAL.inc()
@@ -234,3 +236,26 @@ class Command(BaseCommand):
                 }
             )
         )
+
+    def _cleanup_old_jobs(self) -> None:
+        failed_days = int(getattr(settings, "RETENTION_FAILED_DAYS", 1))
+        succeeded_days = int(getattr(settings, "RETENTION_SUCCEEDED_DAYS", 7))
+        now = timezone.now()
+        if failed_days >= 0:
+            cutoff = now - datetime.timedelta(days=failed_days)
+            self._delete_jobs_older_than(Job.Status.FAILED, cutoff)
+        if succeeded_days >= 0:
+            cutoff = now - datetime.timedelta(days=succeeded_days)
+            self._delete_jobs_older_than(Job.Status.SUCCEEDED, cutoff)
+
+    def _delete_jobs_older_than(self, status: Job.Status, cutoff) -> None:
+        old_jobs = Job.objects.filter(status=status, finished_at__lt=cutoff)[:100]
+        for job in old_jobs:
+            self._delete_job_artifacts(job)
+            job.delete()
+
+    def _delete_job_artifacts(self, job: Job) -> None:
+        job_dir = Path(settings.JOB_STORAGE_ROOT) / f"jobs/{job.id}"
+        result_dir = Path(settings.RESULT_STORAGE_ROOT) / f"jobs/{job.id}"
+        shutil.rmtree(job_dir, ignore_errors=True)
+        shutil.rmtree(result_dir, ignore_errors=True)

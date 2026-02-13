@@ -7,6 +7,7 @@ from pathlib import Path
 from django.conf import settings
 from django.core.exceptions import RequestDataTooBig
 from django.http import FileResponse
+from django.db import transaction
 from django.shortcuts import get_object_or_404
 from rest_framework import serializers, status
 from rest_framework.parsers import FormParser, MultiPartParser
@@ -23,20 +24,30 @@ class JobsCreateView(APIView):
 
     def post(self, request):
         in_flight = [Job.Status.QUEUED, Job.Status.RUNNING]
-        queued_count = Job.objects.filter(status__in=in_flight).count()
         max_queued = getattr(settings, "MAX_QUEUED_JOBS", 50)
-        if max_queued >= 0 and queued_count >= max_queued:
-            ENQUEUE_REJECTED_TOTAL.inc()
-            return Response(
-                {
-                    "error": {
-                        "code": "queue_full",
-                        "message": "Job queue is full. Try again later.",
-                        "details": {"max_queued_jobs": max_queued},
-                    }
-                },
-                status=status.HTTP_429_TOO_MANY_REQUESTS,
-            )
+        with transaction.atomic():
+            if max_queued >= 0:
+                _ = (
+                    Job.objects.select_for_update()
+                    .filter(status__in=in_flight)
+                    .values("id")[:1]
+                )
+                queued_count = Job.objects.filter(status__in=in_flight).count()
+                if queued_count >= max_queued:
+                    ENQUEUE_REJECTED_TOTAL.inc()
+                    return Response(
+                        {
+                            "error": {
+                                "code": "queue_full",
+                                "message": "Job queue is full. Try again later.",
+                                "details": {
+                                    "max_queued_jobs": max_queued,
+                                    "counted_statuses": [s.value for s in in_flight],
+                                },
+                            }
+                        },
+                        status=status.HTTP_429_TOO_MANY_REQUESTS,
+                    )
         try:
             _ = request.data
         except RequestDataTooBig:

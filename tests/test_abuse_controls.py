@@ -76,3 +76,12 @@ class AbuseControlTests(TestCase):
         self.assertEqual(Job.objects.count(), 1)
         job = Job.objects.first()
         self.assertEqual(job.status, Job.Status.FAILED)
+
+    def test_queue_counts_running(self) -> None:
+        Job.objects.create(status=Job.Status.RUNNING)
+        client = APIClient()
+        file_data = _make_zip({"workflow.knime": b"<root></root>"})
+        upload = SimpleUploadedFile("test.zip", file_data, content_type="application/zip")
+        with override_settings(MAX_QUEUED_JOBS=1):
+            resp = client.post("/api/jobs", data={"bundle": upload}, format="multipart")
+        self.assertEqual(resp.status_code, 429)
