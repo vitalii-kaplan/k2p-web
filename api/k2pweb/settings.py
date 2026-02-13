@@ -61,6 +61,8 @@ IS_PYTEST = "PYTEST_CURRENT_TEST" in os.environ or "pytest" in sys.modules
 
 # Prefer DJANGO_DEBUG; accept DEBUG for backwards compatibility
 DEBUG = env_bool("DJANGO_DEBUG", env_bool("DEBUG", False)) or IS_PYTEST
+# Expose /api/schema/ only in debug or when explicitly enabled.
+EXPOSE_SCHEMA = env_bool("EXPOSE_SCHEMA", False)
 
 # Prefer DJANGO_SECRET_KEY; accept SECRET_KEY for backwards compatibility
 SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY") or os.environ.get("SECRET_KEY") or ""

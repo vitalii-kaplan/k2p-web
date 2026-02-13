@@ -7,6 +7,7 @@ from rest_framework.permissions import AllowAny
 
 from apps.core.health import healthz, readyz
 from apps.core.admin_views import sql_console
+from django.conf import settings
 
 urlpatterns = [
     path("", include("django_prometheus.urls")),
@@ -20,14 +21,18 @@ urlpatterns = [
     path("readyz", readyz),
 
     # API
-    path(
-        "api/schema/",
-        get_schema_view(
-            title="k2p-web API",
-            version="1.0.0",
-            permission_classes=[AllowAny],
-        ),
-        name="openapi-schema",
-    ),
     path("api/", include("apps.jobs.urls")),
 ]
+
+if settings.DEBUG or getattr(settings, "EXPOSE_SCHEMA", False):
+    urlpatterns.append(
+        path(
+            "api/schema/",
+            get_schema_view(
+                title="k2p-web API",
+                version="1.0.0",
+                permission_classes=[AllowAny],
+            ),
+            name="openapi-schema",
+        )
+    )
