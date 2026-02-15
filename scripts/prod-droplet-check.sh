@@ -14,8 +14,8 @@ START_WORKER="${START_WORKER:-1}"
 CHECK_READYZ="${CHECK_READYZ:-0}"   # legacy switch; keep for compatibility
 WAIT_SECS="${WAIT_SECS:-90}"
 
-# NOTE: When hitting Cloudflare edge, -k is NOT required.
-# Keep it configurable because some users also run with --resolve to origin IP.
+# When hitting Cloudflare edge, -k is NOT required.
+# Keep configurable because some users also run with --resolve to origin IP.
 CURL_INSECURE="${CURL_INSECURE:-0}"
 
 DEPLOY_FAIL_LEVEL="${DEPLOY_FAIL_LEVEL:-WARNING}"  # ERROR|WARNING|INFO
@@ -33,7 +33,7 @@ CERT_DIR_HOST="${CERT_DIR_HOST:-./certs}"
 NGINX_CERT_PEM="${NGINX_CERT_PEM:-${CERT_DIR_HOST}/origin.pem}"
 NGINX_KEY_PEM="${NGINX_KEY_PEM:-${CERT_DIR_HOST}/origin.key}"
 
-# NEW: /readyz diagnostics controls
+# /readyz diagnostics controls
 DIAG_READYZ="${DIAG_READYZ:-1}"               # print /readyz diagnostics when 1
 READYZ_REQUIRED="${READYZ_REQUIRED:-1}"       # when 1, fail if /readyz isn't behaving as expected
 READYZ_EXPECT_AUTH="${READYZ_EXPECT_AUTH:-1}" # when 1 and READYZ_REQUIRED=1, require 401/403 on external /readyz
@@ -91,15 +91,7 @@ basic_auth_pair() {
   fi
 }
 
-curl_tls_flags() {
-  local -a tls=()
-  [[ "$CURL_INSECURE" == "1" ]] && tls=(-k)
-  printf '%s\n' "${tls[@]+"${tls[@]}"}"
-}
-
 curl_common_flags() {
-  # Keep output stable: show errors, follow redirects ONLY when explicitly needed.
-  # For status probing, we do not use -L by default (redirects are checks by themselves).
   printf '%s\n' "-sS"
 }
 
@@ -126,13 +118,6 @@ http_headers() {
   local tls_flag=()
   [[ "$CURL_INSECURE" == "1" ]] && tls_flag=(-k)
   curl "${tls_flag[@]}" $(curl_common_flags) -I "$url" 2>/dev/null || true
-}
-
-http_body_head() {
-  local url; url="$(trim_ws "${1-}")"
-  local tls_flag=()
-  [[ "$CURL_INSECURE" == "1" ]] && tls_flag=(-k)
-  curl "${tls_flag[@]}" $(curl_common_flags) "$url" 2>/dev/null | sed -n '1,40p' || true
 }
 
 http_body_head_auth() {
@@ -175,8 +160,8 @@ assert_status_in() {
 
 assert_protected_endpoint() {
   # Verifies:
-  # - Without creds: 401/403 (or 404 if you intentionally hide it)
-  # - With creds (if provided): 200 (or another expected code you pass)
+  # - Without creds: 401/403
+  # - With creds (if provided): expected_auth
   local path="$1"
   local expected_noauth="${2:-401 403}"
   local expected_auth="${3:-200}"
@@ -188,9 +173,8 @@ assert_protected_endpoint() {
   assert_status_in "$url" "$expected_noauth"
 
   if has_basic_auth; then
-    local code
+    local code ok=0
     code="$(http_status_auth "$url")"
-    local ok=0
     for s in $expected_auth; do
       [[ "$code" == "$s" ]] && ok=1
     done
@@ -213,7 +197,6 @@ assert_protected_endpoint() {
 
 container_upstream_status_from_nginx() {
   # Probe Django upstream from inside nginx container with allowed Host header.
-  # usage: container_upstream_status_from_nginx /readyz
   local path="$1"
   dc exec -T nginx sh -lc \
     "curl -sS -o /dev/null -w '%{http_code}' -H 'Host: ${DOMAIN}' -H 'X-Forwarded-Proto: https' http://api:8000${path} || echo 000" \
@@ -224,30 +207,27 @@ nginx_htpasswd_diagnostics() {
   say ""
   say "nginx htpasswd diagnostics:"
 
-  # File presence/readability
   dc exec -T nginx sh -lc 'ls -l /etc/nginx/.htpasswd 2>/dev/null || true' 2>/dev/null || true
   dc exec -T nginx sh -lc 'test -r /etc/nginx/.htpasswd && echo "  OK: /etc/nginx/.htpasswd is readable" || echo "  FAIL: /etc/nginx/.htpasswd not readable/missing"' 2>/dev/null || true
 
-  # Hash scheme sniff (do not print the hash)
   local firstline hash
   firstline="$(dc exec -T nginx sh -lc 'sed -n "1p" /etc/nginx/.htpasswd 2>/dev/null || true' 2>/dev/null || true)"
   if [[ -n "${firstline:-}" && "${firstline}" == *:* ]]; then
     hash="${firstline#*:}"
     if [[ "$hash" == \$2y\$* || "$hash" == \$2b\$* || "$hash" == \$2a\$* ]]; then
       say "  htpasswd hash scheme: bcrypt"
-      # Alpine images frequently lack bcrypt crypt() support; this often leads to 500 on auth.
       local osrel
       osrel="$(dc exec -T nginx sh -lc 'cat /etc/os-release 2>/dev/null || true' 2>/dev/null || true)"
       if echo "$osrel" | grep -qi 'alpine'; then
-        say "  WARN: nginx container appears to be Alpine-based; bcrypt htpasswd often fails there."
-        say "        If you see 500 on authenticated requests, regenerate htpasswd with MD5 (-m) or use a non-alpine nginx image."
+        say "  WARN: nginx container appears Alpine-based; bcrypt htpasswd commonly causes 500 on auth."
+        say "        Fix: regenerate htpasswd with MD5 (-m) OR use non-alpine nginx image."
       fi
     elif [[ "$hash" == \$apr1\$* ]]; then
       say "  htpasswd hash scheme: apr1 (MD5) (good compatibility)"
     elif [[ "$hash" == \{SHA\}* ]]; then
-      say "  htpasswd hash scheme: SHA1 (base64) (works but weaker)"
+      say "  htpasswd hash scheme: SHA1 (works but weaker)"
     else
-      say "  htpasswd hash scheme: unknown (may still be OK)"
+      say "  htpasswd hash scheme: unknown"
     fi
   else
     say "  WARN: could not read /etc/nginx/.htpasswd first line (missing/empty?)"
@@ -273,55 +253,19 @@ diagnose_readyz() {
       say "  body (first lines):"
       http_body_head_auth "$ext" || true
       say ""
-      say "  nginx logs tail (look for auth/htpasswd/crypt errors):"
+      say "  nginx logs tail:"
       dc logs --tail=200 nginx 2>/dev/null | sed -n '1,200p' || true
       nginx_htpasswd_diagnostics
       die "authenticated /readyz returned 500"
     fi
   fi
 
-  # Probe upstream from nginx container (bypasses Cloudflare; hits Django directly).
   up_code="$(container_upstream_status_from_nginx /readyz)"
   say "  upstream:   GET http://api:8000/readyz (from nginx container, Host=$DOMAIN) : $up_code"
 
   say ""
-  say "  nginx config excerpt (readyz + auth):"
-  dc exec -T nginx sh -lc 'nginx -T 2>/dev/null' | awk '
-    /location = \/readyz/ {p=1; print "---- BEGIN location = /readyz ----"}
-    p==1 {print}
-    p==1 && /^\s*}\s*$/ {print "---- END location = /readyz ----"; exit}
-  ' 2>/dev/null || true
-
-  local has_loc has_auth has_user_file
-  has_loc="$(dc exec -T nginx sh -lc 'nginx -T 2>/dev/null | grep -F "location = /readyz" >/dev/null && echo 1 || echo 0' 2>/dev/null || echo 0)"
-  has_auth="$(dc exec -T nginx sh -lc 'nginx -T 2>/dev/null | awk "/location = \\/readyz/{p=1} p && /auth_basic\\s+/{found=1} p && /^\s*}\s*$/{exit} END{print (found?1:0)}"' 2>/dev/null || echo 0)"
-  has_user_file="$(dc exec -T nginx sh -lc 'nginx -T 2>/dev/null | awk "/location = \\/readyz/{p=1} p && /auth_basic_user_file\\s+/{found=1} p && /^\s*}\s*$/{exit} END{print (found?1:0)}"' 2>/dev/null || echo 0)"
-
-  if [[ "$has_loc" == "1" && ( "$has_auth" == "0" || "$has_user_file" == "0" ) ]]; then
-    say ""
-    say "  WARN: nginx has location = /readyz but missing auth_basic and/or auth_basic_user_file."
-    say "        If /readyz is internal, add both directives to that location."
-  fi
-
-  say ""
-  if [[ "$up_code" == "404" ]]; then
-    say "  verdict: Django does NOT expose /readyz (upstream 404). Fix Django routing, not nginx/Cloudflare."
-  elif [[ "$up_code" == "400" ]]; then
-    say "  verdict: Django upstream returns 400. This is typically Host/ALLOWED_HOSTS mismatch."
-    say "           Ensure upstream probe includes: -H 'Host: ${DOMAIN}'. Script already does."
-  elif [[ "$up_code" == "200" && ( "$ext_code" == "401" || "$ext_code" == "403" ) ]]; then
-    say "  verdict: /readyz exists and is protected externally (expected)."
-  elif [[ "$up_code" == "200" && "$ext_code" == "200" ]]; then
-    say "  verdict: /readyz exists and is publicly accessible (not expected if you intend to hide internals)."
-  else
-    say "  verdict: mixed signals. Inspect nginx -T excerpt above and Django routing."
-  fi
-
   if [[ "$READYZ_REQUIRED" == "1" ]]; then
-    # Enforce upstream existence
     [[ "$up_code" != "404" ]] || die "/readyz is required, but Django upstream returns 404 (endpoint missing)."
-
-    # Enforce external policy
     if [[ "$READYZ_EXPECT_AUTH" == "1" ]]; then
       if [[ "$ext_code" != "401" && "$ext_code" != "403" ]]; then
         die "/readyz must be auth-protected externally, expected 401/403 but got $ext_code."
@@ -330,7 +274,7 @@ diagnose_readyz() {
         ext_auth_code="$(http_status_auth "$ext")"
         [[ "$ext_auth_code" == "200" ]] || die "/readyz auth check expected 200 but got $ext_auth_code."
       else
-        say "  NOTE: READYZ is required and expected to be protected, but BASIC_AUTH not set -> cannot verify auth success (200)."
+        say "  NOTE: BASIC_AUTH not set -> cannot verify authenticated /readyz=200"
       fi
     else
       [[ "$ext_code" == "200" ]] || die "/readyz must be public externally, expected 200 but got $ext_code."
@@ -340,42 +284,31 @@ diagnose_readyz() {
 
 json_get() {
   # json_get "<json>" "<key>"
-  # tries python3, jq, fallback sed (best-effort)
+  # Preference: jq -> python3 -> sed fallback.
   local js="$1" key="$2"
-  local js_compact
-  js_compact="$(printf '%s' "$js" | tr -d '\r\n')"
-  local out=""
-  if command -v python3 >/dev/null 2>&1; then
-    out="$(printf '%s' "$js" | python3 - "$key" <<'PY' || true
-import sys, json
-key = sys.argv[1]
-try:
-  obj = json.load(sys.stdin)
-  v = obj.get(key, "")
-  if v is None: v = ""
-  print(v)
-except Exception:
-  print("")
-PY
-)"
-    out="$(trim_ws "$out")"
-    if [[ -n "$out" ]]; then
-      printf '%s' "$out"
-      return 0
-    fi
-  fi
 
   if command -v jq >/dev/null 2>&1; then
-    out="$(printf '%s' "$js" | jq -r --arg k "$key" '.[$k] // ""' 2>/dev/null || true)"
-    out="$(trim_ws "$out")"
-    if [[ -n "$out" ]]; then
-      printf '%s' "$out"
-      return 0
-    fi
+    # -e: fail if null/false; we want empty instead of failing the script, so "|| true"
+    printf '%s' "$js" | jq -r --arg k "$key" '.[$k] // ""' 2>/dev/null || true
+    return 0
   fi
 
-  # fallback: naive
-  printf '%s' "$js_compact" | sed -n "s/.*\"$key\"[[:space:]]*:[[:space:]]*\"\\([^\"]*\\)\".*/\\1/p" | head -n1 || true
+  if command -v python3 >/dev/null 2>&1; then
+    # No heredoc here (avoids the bash parse error you hit).
+    printf '%s' "$js" | python3 -c 'import sys,json
+k=sys.argv[1]
+try:
+  o=json.load(sys.stdin)
+  v=o.get(k,"")
+  if v is None: v=""
+  sys.stdout.write(str(v))
+except Exception:
+  pass' "$key" 2>/dev/null || true
+    return 0
+  fi
+
+  # Naive fallback
+  printf '%s' "$js" | tr -d '\r\n' | sed -n "s/.*\"$key\"[[:space:]]*:[[:space:]]*\"\\([^\"]*\\)\".*/\\1/p" | head -n1 || true
 }
 
 run_job_smoke_test() {
@@ -387,29 +320,26 @@ run_job_smoke_test() {
   local tls_flag=()
   [[ "$CURL_INSECURE" == "1" ]] && tls_flag=(-k)
 
-  local job_json job_id status code
+  local job_json job_id status_json status code
   job_json="$(curl "${tls_flag[@]}" $(curl_common_flags) -X POST -F "bundle=@${fixture}" "${BASE_HTTPS_URL}/api/jobs")"
-  job_id="$(json_get "$job_json" "id")"
+  job_id="$(trim_ws "$(json_get "$job_json" "id")")"
   if [[ -z "$job_id" ]]; then
     say "  DEBUG: job create response (first 200 chars): $(printf '%s' "$job_json" | tr -d '\r\n' | head -c 200)"
-    say "  DEBUG: python3=$(command -v python3 2>/dev/null || echo missing) jq=$(command -v jq 2>/dev/null || echo missing)"
-    die "failed to parse job id from response: $job_json"
+    die "failed to parse job id from response"
   fi
   say "  job_id=$job_id"
 
   local deadline=$((SECONDS + JOB_WAIT_SECS))
   status=""
   while (( SECONDS < deadline )); do
-    status="$(curl "${tls_flag[@]}" $(curl_common_flags) "${BASE_HTTPS_URL}/api/jobs/$job_id")"
-    status="$(json_get "$status" "status")"
-    status="$(trim_ws "$status")"
+    status_json="$(curl "${tls_flag[@]}" $(curl_common_flags) "${BASE_HTTPS_URL}/api/jobs/$job_id")"
+    status="$(trim_ws "$(json_get "$status_json" "status")")"
+
     if [[ "$status" == "SUCCEEDED" ]]; then
       break
     fi
     if [[ "$status" == "FAILED" ]]; then
-      local resp
-      resp="$(curl "${tls_flag[@]}" $(curl_common_flags) "${BASE_HTTPS_URL}/api/jobs/$job_id")"
-      die "job failed. Full response: $resp"
+      die "job failed. Full response: $status_json"
     fi
     sleep 1
   done
@@ -456,13 +386,9 @@ check_fixture_contains_workflow() {
   local fixture="$REPO_ROOT/$JOB_FIXTURE_ZIP"
   [[ -f "$fixture" ]] || die "missing job fixture: $fixture"
   if command -v unzip >/dev/null 2>&1; then
-    local listing
-    listing="$(unzip -l "$fixture" 2>/dev/null || true)"
-    if ! printf '%s\n' "$listing" | grep -q 'workflow\.knime'; then
+    if ! unzip -l "$fixture" | grep -q 'workflow\.knime'; then
       say "  DEBUG: zip listing (first 50 lines):"
-      printf '%s\n' "$listing" | head -n 50 || true
-      say "  DEBUG: workflow.knime matches:"
-      printf '%s\n' "$listing" | grep -E 'workflow\.knime' || true
+      unzip -l "$fixture" | head -n 50 || true
       die "fixture zip does not contain workflow.knime: $fixture"
     fi
     say "  OK: workflow.knime found in fixture"
@@ -563,7 +489,6 @@ check_origin_bypass_if_configured() {
   local tls_flag=()
   [[ "$CURL_INSECURE" == "1" ]] && tls_flag=(-k)
 
-  # This bypasses Cloudflare and hits droplet directly, using SNI+Host for DOMAIN.
   local url="https://${DOMAIN}/healthz"
   local code
   code="$(curl "${tls_flag[@]}" $(curl_common_flags) --resolve "${DOMAIN}:443:${ORIGIN_IP}" -o /dev/null -w '%{http_code}' "$url" || echo 000)"
@@ -637,7 +562,7 @@ main() {
     say "Step 6b: Verify nginx container sees /static/ui assets"
     dc up -d nginx >/dev/null
     dc exec -T nginx sh -lc 'test -f /static/ui/app.css && test -f /static/admin/css/base.css' || \
-      die "nginx cannot see collected static assets in /static (volume mount / collectstatic issue)."
+      die "nginx cannot see collected static assets in /static"
   fi
 
   say ""
@@ -662,7 +587,6 @@ main() {
   say "Step 9: HTTP->HTTPS redirect checks"
   wait_http_status_in "$BASE_HTTP_URL/healthz" "301 302 308" || die "expected HTTP redirect for /healthz"
   say "  GET $BASE_HTTP_URL/healthz : redirect OK"
-  # Even if CHECK_READYZ=0, /readyz redirect should still work if endpoint exists.
   wait_http_status_in "$BASE_HTTP_URL/readyz" "301 302 308 401 403 404" || die "unexpected /readyz behavior on HTTP"
   say "  GET $BASE_HTTP_URL/readyz : redirect or policy OK"
 
@@ -676,13 +600,10 @@ main() {
   say ""
   say "Step 11: Access-control checks (through domain)"
   assert_status_in "$BASE_HTTPS_URL/admin/sql/" "404"
-
-  # Without creds these must be protected
   assert_protected_endpoint "/admin/" "401 403" "200"
   assert_protected_endpoint "/metrics" "401 403" "200"
   assert_protected_endpoint "/api/schema/" "401 403" "200"
 
-  # /readyz policy check: current expected state is "protected"
   if [[ "$READYZ_EXPECT_AUTH" == "1" ]]; then
     assert_protected_endpoint "/readyz" "401 403" "200"
   else
