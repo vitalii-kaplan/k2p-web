@@ -10,12 +10,21 @@ BASE_HTTPS_URL="${BASE_HTTPS_URL:-https://${DOMAIN}}"
 WAIT_SECS="${WAIT_SECS:-30}"
 CURL_INSECURE="${CURL_INSECURE:-0}"
 
-# Basic Auth credentials are optional here; not required for the checks below.
-BASIC_AUTH="${BASIC_AUTH:-}"
-BASIC_AUTH_USER="${BASIC_AUTH_USER:-}"
-BASIC_AUTH_PASS="${BASIC_AUTH_PASS:-}"
-
 LOG_TAIL="${LOG_TAIL:-200}"
+
+# Explicit protected paths (no nginx -T parsing).
+# Keep this list in sync with deploy/nginx/nginx.conf.
+PROTECTED_PATHS_DEFAULT=(
+  "/readyz"
+  "/admin/sql/"
+  "/admin/"
+  "/metrics"
+  "/api/schema/"
+)
+
+# Optional: override list from env, space-separated:
+#   PROTECTED_PATHS="/readyz /admin/ /metrics"
+PROTECTED_PATHS_ENV="${PROTECTED_PATHS:-}"
 
 repo_root() { git rev-parse --show-toplevel 2>/dev/null || pwd; }
 REPO_ROOT="$(repo_root)"
@@ -43,28 +52,6 @@ trim_ws() {
   s="${s#"${s%%[![:space:]]*}"}"
   s="${s%"${s##*[![:space:]]}"}"
   printf '%s' "$s"
-}
-
-basic_auth_pair() {
-  local user="" pass=""
-  if [[ -n "${BASIC_AUTH:-}" && "${BASIC_AUTH}" == *:* ]]; then
-    user="${BASIC_AUTH%%:*}"
-    pass="${BASIC_AUTH#*:}"
-  elif [[ -n "${BASIC_AUTH_USER:-}" && -n "${BASIC_AUTH_PASS:-}" ]]; then
-    user="${BASIC_AUTH_USER}"
-    pass="${BASIC_AUTH_PASS}"
-  fi
-  user="$(trim_ws "$user")"
-  pass="$(trim_ws "$pass")"
-  if [[ -n "$user" && -n "$pass" ]]; then
-    printf '%s %s\n' "$user" "$pass"
-  fi
-}
-
-has_basic_auth() {
-  local user pass
-  read -r user pass < <(basic_auth_pair || true)
-  [[ -n "${user:-}" && -n "${pass:-}" ]]
 }
 
 curl_common_flags() { printf '%s\n' "-sS"; }
@@ -117,31 +104,6 @@ assert_nginx_running() {
     die "nginx container is not running"
 }
 
-# FIX: nginx -T writes most output to stderr; capture stderr into stdout.
-nginx_dump() {
-  dc exec -T nginx sh -lc 'nginx -T 2>&1' 2>/dev/null || true
-}
-
-get_protected_locations_from_nginx() {
-  nginx_dump | awk '
-    function strip_brace(s){ sub(/\{.*/,"",s); gsub(/[[:space:]]+/,"",s); return s }
-    BEGIN{inloc=0; hasauth=0; loc=""}
-    /^[[:space:]]*location[[:space:]]/{
-      inloc=1; hasauth=0; loc="";
-      n=split($0,a,/[[:space:]]+/);
-      if (a[2]=="=" || a[2]=="^~" || a[2]=="~" || a[2]=="~*") loc=strip_brace(a[3]);
-      else loc=strip_brace(a[2]);
-      next
-    }
-    inloc==1 && $0 ~ /auth_basic[[:space:]]/ { hasauth=1 }
-    inloc==1 && /^[[:space:]]*}[[:space:]]*$/{
-      if (hasauth==1 && loc ~ /^\//) print loc;
-      inloc=0; hasauth=0; loc="";
-      next
-    }
-  ' | sort -u
-}
-
 assert_http_301_for_path() {
   # Enforce: HTTP 301 for protected locations.
   # /healthz is excluded from the 301 rule (allowed to be 200).
@@ -152,7 +114,6 @@ assert_http_301_for_path() {
   code="$(http_status "$url")"
 
   if [[ "$path" == "/healthz" ]]; then
-    # excluded from 301 rule; allow 200 or a redirect
     if [[ "$code" == "200" || "$code" == "301" || "$code" == "302" || "$code" == "308" ]]; then
       loc="$(http_location_header "$url")"
       say "  HTTP  $path : $code ${loc:+-> Location: $loc}"
@@ -188,6 +149,16 @@ assert_https_protected_for_path() {
   say "  HTTPS $path : $code OK (auth required)"
 }
 
+get_protected_paths() {
+  if [[ -n "${PROTECTED_PATHS_ENV:-}" ]]; then
+    # shellcheck disable=SC2206
+    local arr=( $PROTECTED_PATHS_ENV )
+    printf '%s\n' "${arr[@]}"
+  else
+    printf '%s\n' "${PROTECTED_PATHS_DEFAULT[@]}"
+  fi
+}
+
 main() {
   need_cmd docker
   need_cmd curl
@@ -209,15 +180,10 @@ main() {
   say "  HTTPS /healthz : 200 OK"
   say ""
 
-  say "Check: discover auth_basic-protected locations from nginx config"
-  mapfile -t PROTECTED_PATHS < <(get_protected_locations_from_nginx || true)
-  if [[ "${#PROTECTED_PATHS[@]}" -le 0 ]]; then
-    say "DEBUG: could not discover protected locations. First 120 lines of nginx -T:"
-    nginx_dump | sed -n '1,120p' || true
-    die "no auth_basic-protected locations found in nginx config"
-  fi
+  mapfile -t PROTECTED_PATHS < <(get_protected_paths)
+  [[ "${#PROTECTED_PATHS[@]}" -gt 0 ]] || die "protected paths list is empty"
 
-  say "Protected locations:"
+  say "Protected locations (explicit list):"
   for p in "${PROTECTED_PATHS[@]}"; do
     say "  - $p"
   done
