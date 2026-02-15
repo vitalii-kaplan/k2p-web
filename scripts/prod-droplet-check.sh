@@ -342,6 +342,8 @@ json_get() {
   # json_get "<json>" "<key>"
   # tries python3, jq, fallback sed (best-effort)
   local js="$1" key="$2"
+  local js_compact
+  js_compact="$(printf '%s' "$js" | tr -d '\r\n')"
   if command -v python3 >/dev/null 2>&1; then
     printf '%s' "$js" | python3 - "$key" <<'PY'
 import sys, json
@@ -363,7 +365,7 @@ PY
   fi
 
   # fallback: naive
-  printf '%s' "$js" | sed -n "s/.*\"$key\"[[:space:]]*:[[:space:]]*\"\\([^\"]*\\)\".*/\\1/p" | head -n1 || true
+  printf '%s' "$js_compact" | sed -n "s/.*\"$key\"[[:space:]]*:[[:space:]]*\"\\([^\"]*\\)\".*/\\1/p" | head -n1 || true
 }
 
 run_job_smoke_test() {
@@ -378,7 +380,11 @@ run_job_smoke_test() {
   local job_json job_id status code
   job_json="$(curl "${tls_flag[@]}" $(curl_common_flags) -X POST -F "bundle=@${fixture}" "${BASE_HTTPS_URL}/api/jobs")"
   job_id="$(json_get "$job_json" "id")"
-  [[ -n "$job_id" ]] || die "failed to parse job id from response: $job_json"
+  if [[ -z "$job_id" ]]; then
+    say "  DEBUG: job create response (first 200 chars): $(printf '%s' "$job_json" | tr -d '\r\n' | head -c 200)"
+    say "  DEBUG: python3=$(command -v python3 2>/dev/null || echo missing) jq=$(command -v jq 2>/dev/null || echo missing)"
+    die "failed to parse job id from response: $job_json"
+  fi
   say "  job_id=$job_id"
 
   local deadline=$((SECONDS + JOB_WAIT_SECS))
