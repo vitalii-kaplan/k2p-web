@@ -643,7 +643,7 @@ main() {
   say ""
   say "Step 11: Access-control checks (through domain)"
   assert_status_in "$BASE_HTTPS_URL/admin/sql/" "404"
-  assert_protected_endpoint "/admin/" "401 403" "200"
+  assert_protected_endpoint "/admin/" "401 403" "200 302"
   assert_protected_endpoint "/metrics" "401 403" "200"
   assert_protected_endpoint "/api/schema/" "401 403" "200"
 
