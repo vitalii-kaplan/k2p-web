@@ -9,13 +9,12 @@ BASE_HTTP_URL="${BASE_HTTP_URL:-http://${DOMAIN}}"
 BASE_HTTPS_URL="${BASE_HTTPS_URL:-https://${DOMAIN}}"
 
 WIPE_VOLUMES="${WIPE_VOLUMES:-0}"
-BUILD="${BUILD:-0}"                 # usually 0 on droplet if you pull code already; set 1 if you rebuild there
+BUILD="${BUILD:-0}"                 # usually 0 on droplet; set 1 if you rebuild there
 START_WORKER="${START_WORKER:-1}"
-CHECK_READYZ="${CHECK_READYZ:-0}"
+CHECK_READYZ="${CHECK_READYZ:-0}"   # old behavior (strict readiness on /readyz)
 WAIT_SECS="${WAIT_SECS:-90}"
 
-# If you use Cloudflare Origin cert, curl will not trust it by default -> -k needed for direct https to domain.
-# If you later switch to a publicly trusted cert (Let's Encrypt), set CURL_INSECURE=0.
+# Cloudflare Origin cert is not publicly trusted -> -k typically needed.
 CURL_INSECURE="${CURL_INSECURE:-1}"
 
 DEPLOY_FAIL_LEVEL="${DEPLOY_FAIL_LEVEL:-WARNING}"  # ERROR|WARNING|INFO
@@ -32,6 +31,11 @@ JOB_WAIT_SECS="${JOB_WAIT_SECS:-180}"
 CERT_DIR_HOST="${CERT_DIR_HOST:-./certs}"
 NGINX_CERT_PEM="${NGINX_CERT_PEM:-${CERT_DIR_HOST}/origin.pem}"
 NGINX_KEY_PEM="${NGINX_KEY_PEM:-${CERT_DIR_HOST}/origin.key}"
+
+# NEW: /readyz diagnostics controls
+DIAG_READYZ="${DIAG_READYZ:-1}"          # always print diagnostics when 1
+READYZ_REQUIRED="${READYZ_REQUIRED:-0}"  # when 1, fail if /readyz is not present/working as expected
+READYZ_EXPECT_AUTH="${READYZ_EXPECT_AUTH:-1}" # when 1 and READYZ_REQUIRED=1, require 401/403 on external /readyz
 
 # -----------------------------------------------------------------------------
 
@@ -51,6 +55,12 @@ trim_ws() {
   s="${s#"${s%%[![:space:]]*}"}"
   s="${s%"${s##*[![:space:]]}"}"
   printf '%s' "$s"
+}
+
+curl_tls_flags() {
+  local -a tls_flag=()
+  [[ "$CURL_INSECURE" == "1" ]] && tls_flag=(-k)
+  printf '%s\n' "${tls_flag[@]+"${tls_flag[@]}"}"
 }
 
 http_status() {
@@ -94,6 +104,77 @@ assert_status_in() {
   die "GET $url expected one of [$expected], got $code"
 }
 
+container_http_status() {
+  # usage: container_http_status nginx http://api:8000/readyz
+  local svc="$1" url="$2"
+  local tls_flag=()
+  [[ "$CURL_INSECURE" == "1" ]] && tls_flag=(-k)
+  # inside the docker network, we almost always use plain HTTP to upstream
+  dc exec -T "$svc" sh -lc "curl -sS -o /dev/null -w '%{http_code}' '$url' || echo 000" 2>/dev/null || echo "000"
+}
+
+diagnose_readyz() {
+  say ""
+  say "Step X: /readyz diagnostics"
+
+  local ext="$BASE_HTTPS_URL/readyz"
+  local ext_code up_code
+  ext_code="$(http_status "$ext")"
+  say "  external:  GET $ext : $ext_code"
+
+  # Probe upstream from nginx container (bypasses Cloudflare, hits Django directly).
+  up_code="$(container_http_status nginx http://api:8000/readyz)"
+  say "  upstream:   GET http://api:8000/readyz (from nginx container) : $up_code"
+
+  say ""
+  say "  nginx config excerpt (readyz + auth):"
+  dc exec -T nginx sh -lc 'nginx -T 2>/dev/null' | awk '
+    /location = \/readyz/ {p=1; print "---- BEGIN location = /readyz ----"}
+    p==1 {print}
+    p==1 && /^\s*}\s*$/ {print "---- END location = /readyz ----"; exit}
+  ' 2>/dev/null || true
+
+  local has_loc has_auth
+  has_loc="$(dc exec -T nginx sh -lc 'nginx -T 2>/dev/null | grep -F "location = /readyz" >/dev/null && echo 1 || echo 0' 2>/dev/null || echo 0)"
+  has_auth="$(dc exec -T nginx sh -lc 'nginx -T 2>/dev/null | awk "/location = \\/readyz/{p=1} p && /auth_basic/{found=1} p && /location/{if(NR>1 && !/location = \\/readyz/) exit} END{print (found?1:0)}"' 2>/dev/null || echo 0)"
+
+  say ""
+  if [[ "$up_code" == "404" ]]; then
+    say "  verdict: Django does NOT expose /readyz (upstream returns 404)."
+    say "           Fix is in Django urls/views, not in Cloudflare."
+  elif [[ "$up_code" == "200" && "$ext_code" == "404" ]]; then
+    say "  verdict: Upstream has /readyz but public path returns 404 -> nginx routing mismatch."
+    say "           This usually means wrong nginx.conf mounted or you are not hitting the expected server block."
+  elif [[ "$up_code" == "200" && ( "$ext_code" == "401" || "$ext_code" == "403" ) ]]; then
+    say "  verdict: /readyz exists and is protected by Basic Auth (good)."
+  elif [[ "$up_code" == "200" && "$ext_code" == "200" ]]; then
+    say "  verdict: /readyz exists but is publicly accessible (not good if you intend to hide internals)."
+  else
+    say "  verdict: mixed signals. Inspect nginx -T excerpt above and Django routing."
+  fi
+
+  if [[ "$has_loc" == "1" && "$has_auth" == "0" ]]; then
+    say "  WARN: nginx has location = /readyz but it does NOT contain auth_basic."
+    say "        If /readyz is internal, add auth_basic to that location (same as /metrics)."
+  fi
+
+  if [[ "$READYZ_REQUIRED" == "1" ]]; then
+    # Enforce presence + expected auth on external endpoint
+    if [[ "$up_code" == "404" ]]; then
+      die "/readyz is required, but Django upstream returns 404 (endpoint missing)."
+    fi
+    if [[ "$READYZ_EXPECT_AUTH" == "1" ]]; then
+      if [[ "$ext_code" != "401" && "$ext_code" != "403" ]]; then
+        die "/readyz is required to be auth-protected, expected 401/403 but got $ext_code."
+      fi
+    else
+      if [[ "$ext_code" != "200" ]]; then
+        die "/readyz is required to be public, expected 200 but got $ext_code."
+      fi
+    fi
+  fi
+}
+
 run_job_smoke_test() {
   say ""
   say "Step 18: Job smoke test (upload + result.zip availability)"
@@ -133,7 +214,6 @@ run_job_smoke_test() {
 check_no_k8s_submit_errors() {
   say ""
   say "Step 14: Verify worker logs contain no kubectl/openapi errors"
-  # Look for kubectl/openapi localhost:8080 error signature
   if dc logs --tail=500 worker 2>/dev/null | grep -E "openapi/v2|localhost:8080|k8s_submit_failed|kubectl" >/dev/null; then
     dc logs --tail=200 worker | grep -E "openapi/v2|localhost:8080|k8s_submit_failed|kubectl" || true
     die "Found legacy k8s/kubectl errors in worker logs. Ensure worker uses local Docker runner."
@@ -168,6 +248,10 @@ check_fixture_contains_workflow() {
   [[ -f "$fixture" ]] || die "missing job fixture: $fixture"
   if command -v unzip >/dev/null 2>&1; then
     if ! unzip -l "$fixture" | grep -q 'workflow\.knime'; then
+      say "  DEBUG: zip listing (first 50 lines):"
+      unzip -l "$fixture" | head -n 50 || true
+      say "  DEBUG: workflow.knime matches:"
+      unzip -l "$fixture" | grep -E 'workflow\.knime' || true
       die "fixture zip does not contain workflow.knime: $fixture"
     fi
     say "  OK: workflow.knime found in fixture"
@@ -209,7 +293,6 @@ check_env_sane() {
   local env_file="$REPO_ROOT/.env"
   [[ -f "$env_file" ]] || die "missing .env at repo root: $env_file"
 
-  # Minimal sanity checks; droplet compose sets DB vars via environment, so we focus on critical Django flags.
   local debug secret hosts ssl_redirect xfp
   debug="$(awk -F= '$1=="DJANGO_DEBUG"{print $2}' "$env_file" | tail -n1 || true)"
   secret="$(awk -F= '$1=="DJANGO_SECRET_KEY"{print $2}' "$env_file" | tail -n1 || true)"
@@ -242,7 +325,6 @@ check_env_sane() {
 }
 
 check_tls_material_present() {
-  # Only check if nginx actually maps 443 (almost certainly in your prod file)
   say ""
   say "TLS material checks:"
   [[ -f "$REPO_ROOT/$NGINX_CERT_PEM" ]] || die "missing cert: $REPO_ROOT/$NGINX_CERT_PEM"
@@ -254,7 +336,6 @@ check_tls_material_present() {
 check_ports_published() {
   say ""
   say "Port publish checks (host):"
-  # Use ss if available; fallback to docker compose ps.
   if command -v ss >/dev/null 2>&1; then
     ss -lntp | egrep ':(80|443)\b' || die "expected host to be listening on :80 and :443 (nginx publish)."
   else
@@ -318,7 +399,6 @@ main() {
   if [[ "$CHECK_STATIC" == "1" ]]; then
     say ""
     say "Step 6: Collect static into shared volume (collectstatic service)"
-    # Use your dedicated service (profile ops); avoids relying on api container state.
     dc --profile ops run --rm collectstatic
 
     say ""
@@ -348,7 +428,6 @@ main() {
 
   say ""
   say "Step 9: HTTP->HTTPS redirect checks"
-  # Expect redirect on http paths when SECURE_SSL_REDIRECT=1 (or nginx redirects).
   wait_http_status_in "$BASE_HTTP_URL/healthz" "301 302 308" || die "expected HTTP redirect for /healthz"
   say "  GET $BASE_HTTP_URL/healthz : redirect OK"
   if [[ "$CHECK_READYZ" == "1" ]]; then
@@ -394,6 +473,10 @@ main() {
   check_fixture_contains_workflow
   if [[ "$CHECK_JOB_RUN" == "1" ]]; then
     run_job_smoke_test
+  fi
+
+  if [[ "$DIAG_READYZ" == "1" ]]; then
+    diagnose_readyz
   fi
 
   say ""
