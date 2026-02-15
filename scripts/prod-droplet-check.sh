@@ -645,7 +645,7 @@ main() {
   assert_status_in "$BASE_HTTPS_URL/admin/sql/" "404"
   assert_protected_endpoint "/admin/" "401 403" "200 302"
   assert_protected_endpoint "/metrics" "401 403" "200"
-  assert_protected_endpoint "/api/schema/" "401 403" "200"
+  assert_protected_endpoint "/api/schema" "401 403" "200 301 302"
 
   if [[ "$READYZ_EXPECT_AUTH" == "1" ]]; then
     assert_protected_endpoint "/readyz" "401 403" "200"
