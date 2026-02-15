@@ -463,11 +463,13 @@ check_fixture_contains_workflow() {
   local fixture="$REPO_ROOT/$JOB_FIXTURE_ZIP"
   [[ -f "$fixture" ]] || die "missing job fixture: $fixture"
   if command -v unzip >/dev/null 2>&1; then
-    if ! unzip -l "$fixture" | grep -q 'workflow\.knime'; then
+    local listing
+    listing="$(unzip -l "$fixture" 2>/dev/null || true)"
+    if ! printf '%s\n' "$listing" | grep -q 'workflow\.knime'; then
       say "  DEBUG: zip listing (first 50 lines):"
-      unzip -l "$fixture" | head -n 50 || true
+      printf '%s\n' "$listing" | head -n 50 || true
       say "  DEBUG: workflow.knime matches:"
-      unzip -l "$fixture" | grep -E 'workflow\.knime' || true
+      printf '%s\n' "$listing" | grep -E 'workflow\.knime' || true
       die "fixture zip does not contain workflow.knime: $fixture"
     fi
     say "  OK: workflow.knime found in fixture"
