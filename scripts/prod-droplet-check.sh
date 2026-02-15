@@ -563,4 +563,154 @@ check_origin_bypass_if_configured() {
 main() {
   need_cmd docker
   need_cmd git
-  need
+  need_cmd curl
+
+  DOMAIN="$(trim_ws "$DOMAIN")"
+  BASE_HTTP_URL="$(trim_ws "$BASE_HTTP_URL")"
+  BASE_HTTPS_URL="$(trim_ws "$BASE_HTTPS_URL")"
+
+  say "Repo: $REPO_ROOT"
+  say "Docker context: $(docker context show 2>/dev/null || echo unknown)"
+  say "Compose file: $COMPOSE_FILE"
+  say "DOMAIN: $DOMAIN"
+  say "HTTP:  $BASE_HTTP_URL"
+  say "HTTPS: $BASE_HTTPS_URL"
+  say "WIPE_VOLUMES=$WIPE_VOLUMES BUILD=$BUILD START_WORKER=$START_WORKER CHECK_READYZ=$CHECK_READYZ CURL_INSECURE=$CURL_INSECURE"
+  if has_basic_auth; then
+    local u _p; read -r u _p < <(basic_auth_pair)
+    say "BASIC_AUTH: set (user=$u, password=hidden)"
+  else
+    say "BASIC_AUTH: not set"
+  fi
+  say ""
+
+  check_env_sane
+  check_tls_material_present
+
+  say ""
+  say "Step 1: Teardown"
+  if [[ "$WIPE_VOLUMES" == "1" ]]; then
+    say "  Running: docker compose down -v --remove-orphans"
+    dc down -v --remove-orphans
+  else
+    say "  Running: docker compose down --remove-orphans"
+    dc down --remove-orphans
+  fi
+
+  if [[ "$BUILD" == "1" ]]; then
+    say ""
+    say "Step 2: Build images"
+    dc build
+  fi
+
+  say ""
+  say "Step 3: Start Postgres"
+  dc up -d postgres
+  wait_for_service_healthy postgres
+  say "  postgres is healthy"
+
+  say ""
+  say "Step 4: Run migrations (one-off)"
+  dc run --rm api python manage.py migrate
+
+  say ""
+  say "Step 5: Django deploy checks"
+  dc run --rm api python manage.py check --deploy --fail-level "$DEPLOY_FAIL_LEVEL"
+
+  if [[ "$CHECK_STATIC" == "1" ]]; then
+    say ""
+    say "Step 6: Collect static into shared volume (collectstatic service)"
+    dc --profile ops run --rm collectstatic
+
+    say ""
+    say "Step 6b: Verify nginx container sees /static/ui assets"
+    dc up -d nginx >/dev/null
+    dc exec -T nginx sh -lc 'test -f /static/ui/app.css && test -f /static/admin/css/base.css' || \
+      die "nginx cannot see collected static assets in /static (volume mount / collectstatic issue)."
+  fi
+
+  say ""
+  say "Step 7: Start API"
+  dc up -d api
+  local api_cid
+  api_cid="$(wait_for_container_running api || true)"
+  [[ -n "$api_cid" ]] || die "api did not reach running state"
+  say "  api container: $api_cid"
+
+  say ""
+  say "Step 8: Start Nginx"
+  dc up -d nginx
+  local ngx_cid
+  ngx_cid="$(wait_for_container_running nginx || true)"
+  [[ -n "$ngx_cid" ]] || die "nginx did not reach running state"
+  say "  nginx container: $ngx_cid"
+
+  check_ports_published
+
+  say ""
+  say "Step 9: HTTP->HTTPS redirect checks"
+  wait_http_status_in "$BASE_HTTP_URL/healthz" "301 302 308" || die "expected HTTP redirect for /healthz"
+  say "  GET $BASE_HTTP_URL/healthz : redirect OK"
+  # Even if CHECK_READYZ=0, /readyz redirect should still work if endpoint exists.
+  wait_http_status_in "$BASE_HTTP_URL/readyz" "301 302 308 401 403 404" || die "unexpected /readyz behavior on HTTP"
+  say "  GET $BASE_HTTP_URL/readyz : redirect or policy OK"
+
+  say ""
+  say "Step 10: HTTPS liveness"
+  wait_http_status_in "$BASE_HTTPS_URL/healthz" "200" || die "GET $BASE_HTTPS_URL/healthz did not become 200"
+  say "  GET $BASE_HTTPS_URL/healthz : 200 OK"
+
+  check_origin_bypass_if_configured
+
+  say ""
+  say "Step 11: Access-control checks (through domain)"
+  assert_status_in "$BASE_HTTPS_URL/admin/sql/" "404"
+
+  # Without creds these must be protected
+  assert_protected_endpoint "/admin/" "401 403" "200"
+  assert_protected_endpoint "/metrics" "401 403" "200"
+  assert_protected_endpoint "/api/schema/" "401 403" "200"
+
+  # /readyz policy check: current expected state is "protected"
+  if [[ "$READYZ_EXPECT_AUTH" == "1" ]]; then
+    assert_protected_endpoint "/readyz" "401 403" "200"
+  else
+    assert_status_in "$BASE_HTTPS_URL/readyz" "200"
+  fi
+
+  if [[ "$CHECK_STATIC" == "1" ]]; then
+    say ""
+    say "Step 12: Static serving checks (through domain)"
+    assert_status_in "$BASE_HTTPS_URL$STATIC_TEST_PATH" "200"
+    assert_status_in "$BASE_HTTPS_URL$UI_TEST_PATH" "200"
+  fi
+
+  if [[ "$START_WORKER" == "1" ]]; then
+    say ""
+    say "Step 13: Start Worker"
+    dc up -d worker
+    local worker_cid
+    worker_cid="$(wait_for_container_running worker || true)"
+    [[ -n "$worker_cid" ]] || die "worker did not reach running state"
+    say "  worker container: $worker_cid"
+  fi
+
+  check_no_k8s_submit_errors
+  check_shared_job_dirs
+  check_k2p_image_pull
+  check_fixture_contains_workflow
+  if [[ "$CHECK_JOB_RUN" == "1" ]]; then
+    run_job_smoke_test
+  fi
+
+  if [[ "$DIAG_READYZ" == "1" ]]; then
+    diagnose_readyz
+  fi
+
+  say ""
+  say "DONE: droplet deploy checks passed."
+  say "Summary:"
+  dc ps
+}
+
+main "$@"
