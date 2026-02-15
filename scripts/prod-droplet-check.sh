@@ -344,8 +344,9 @@ json_get() {
   local js="$1" key="$2"
   local js_compact
   js_compact="$(printf '%s' "$js" | tr -d '\r\n')"
+  local out=""
   if command -v python3 >/dev/null 2>&1; then
-    printf '%s' "$js" | python3 - "$key" <<'PY'
+    out="$(printf '%s' "$js" | python3 - "$key" <<'PY' || true
 import sys, json
 key = sys.argv[1]
 try:
@@ -356,12 +357,21 @@ try:
 except Exception:
   print("")
 PY
-    return 0
+)"
+    out="$(trim_ws "$out")"
+    if [[ -n "$out" ]]; then
+      printf '%s' "$out"
+      return 0
+    fi
   fi
 
   if command -v jq >/dev/null 2>&1; then
-    printf '%s' "$js" | jq -r --arg k "$key" '.[$k] // ""' 2>/dev/null || true
-    return 0
+    out="$(printf '%s' "$js" | jq -r --arg k "$key" '.[$k] // ""' 2>/dev/null || true)"
+    out="$(trim_ws "$out")"
+    if [[ -n "$out" ]]; then
+      printf '%s' "$out"
+      return 0
+    fi
   fi
 
   # fallback: naive
