@@ -117,8 +117,13 @@ assert_nginx_running() {
     die "nginx container is not running"
 }
 
+# FIX: nginx -T writes most output to stderr; capture stderr into stdout.
+nginx_dump() {
+  dc exec -T nginx sh -lc 'nginx -T 2>&1' 2>/dev/null || true
+}
+
 get_protected_locations_from_nginx() {
-  dc exec -T nginx sh -lc 'nginx -T 2>/dev/null' 2>/dev/null | awk '
+  nginx_dump | awk '
     function strip_brace(s){ sub(/\{.*/,"",s); gsub(/[[:space:]]+/,"",s); return s }
     BEGIN{inloc=0; hasauth=0; loc=""}
     /^[[:space:]]*location[[:space:]]/{
@@ -147,7 +152,7 @@ assert_http_301_for_path() {
   code="$(http_status "$url")"
 
   if [[ "$path" == "/healthz" ]]; then
-    # excluded from 301 rule; allow 200 or a redirect (your current nginx:80 returns 301 for everything)
+    # excluded from 301 rule; allow 200 or a redirect
     if [[ "$code" == "200" || "$code" == "301" || "$code" == "302" || "$code" == "308" ]]; then
       loc="$(http_location_header "$url")"
       say "  HTTP  $path : $code ${loc:+-> Location: $loc}"
@@ -206,7 +211,11 @@ main() {
 
   say "Check: discover auth_basic-protected locations from nginx config"
   mapfile -t PROTECTED_PATHS < <(get_protected_locations_from_nginx || true)
-  [[ "${#PROTECTED_PATHS[@]}" -gt 0 ]] || die "no auth_basic-protected locations found in nginx config"
+  if [[ "${#PROTECTED_PATHS[@]}" -le 0 ]]; then
+    say "DEBUG: could not discover protected locations. First 120 lines of nginx -T:"
+    nginx_dump | sed -n '1,120p' || true
+    die "no auth_basic-protected locations found in nginx config"
+  fi
 
   say "Protected locations:"
   for p in "${PROTECTED_PATHS[@]}"; do
