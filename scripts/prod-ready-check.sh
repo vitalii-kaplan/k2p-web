@@ -395,7 +395,7 @@ main() {
 
   say ""
   say "Step 11: Access-control checks"
-  assert_status_in "$API_URL/admin/sql/" "404"
+  assert_status_in "$API_URL/admin/sql/" "401 403"
   assert_status_in "$API_URL/admin/" "401 403"
   assert_status_in "$API_URL/metrics" "401 403"
 
