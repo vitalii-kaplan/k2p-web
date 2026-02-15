@@ -123,7 +123,10 @@ diagnose_readyz() {
   say "  external:  GET $ext : $ext_code"
 
   # Probe upstream from nginx container (bypasses Cloudflare, hits Django directly).
-  up_code="$(container_http_status nginx http://api:8000/readyz)"
+  up_code="$(dc exec -T nginx sh -lc \
+  "curl -sS -o /dev/null -w '%{http_code}' -H 'Host: ${DOMAIN}' -H 'X-Forwarded-Proto: https' http://api:8000/readyz || echo 000" \
+  2>/dev/null || echo 000)"
+
   say "  upstream:   GET http://api:8000/readyz (from nginx container) : $up_code"
 
   say ""
