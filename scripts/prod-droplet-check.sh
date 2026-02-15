@@ -123,7 +123,6 @@ http_headers() {
   curl "${tls_flag[@]}" $(curl_common_flags) -I "$url" 2>/dev/null || true
 }
 
-# NEW: headers for authenticated request (so you see the real response headers)
 http_headers_auth() {
   local url; url="$(trim_ws "${1-}")"
   local user pass
@@ -173,9 +172,7 @@ assert_status_in() {
   die "GET $url expected one of [$expected], got $code"
 }
 
-# NEW: nginx debug helpers (console output)
 nginx_location_excerpt() {
-  # usage: nginx_location_excerpt "location = /readyz"
   local marker="$1"
   say ""
   say "  nginx -T excerpt for: $marker"
@@ -224,7 +221,6 @@ nginx_htpasswd_diagnostics() {
 }
 
 assert_protected_endpoint() {
-  # (kept as-is; not used by the new "301 redirect" check, but left intact)
   local path="$1"
   local expected_noauth="${2:-401 403}"
   local expected_auth="${3:-200}"
@@ -269,7 +265,6 @@ assert_protected_endpoint() {
 }
 
 container_upstream_status_from_nginx() {
-  # Probe Django upstream from inside nginx container with allowed Host header.
   local path="$1"
   dc exec -T nginx sh -lc \
     "curl -sS -o /dev/null -w '%{http_code}' -H 'Host: ${DOMAIN}' -H 'X-Forwarded-Proto: https' http://api:8000${path} || echo 000" \
@@ -326,8 +321,6 @@ diagnose_readyz() {
 }
 
 json_get() {
-  # json_get "<json>" "<key>"
-  # Preference: jq -> python3 -> sed fallback.
   local js="$1" key="$2"
 
   if command -v jq >/dev/null 2>&1; then
@@ -537,19 +530,17 @@ check_origin_bypass_if_configured() {
 }
 
 # ---------------------------------------------------------------------
-# NEW TASK: check that ALL auth_basic-protected locations redirect on HTTP with 301
+# Check that ALL auth_basic-protected locations redirect on HTTP with 301
+# (EXCEPT /healthz, which is allowed to be 200)
 # ---------------------------------------------------------------------
 
 get_protected_locations_from_nginx() {
-  # Extract location paths whose block contains auth_basic.
-  # We only keep locations that start with '/' (skip regex locations).
   dc exec -T nginx sh -lc 'nginx -T 2>/dev/null' 2>/dev/null | awk '
     function strip_brace(s){ sub(/\{.*/,"",s); gsub(/[[:space:]]+/,"",s); return s }
     BEGIN{inloc=0; hasauth=0; loc=""}
     /^[[:space:]]*location[[:space:]]/{
       inloc=1; hasauth=0; loc="";
       n=split($0,a,/[[:space:]]+/);
-      # a[1]=location, a[2]=maybe modifier, a[3]=path
       if (a[2]=="=" || a[2]=="^~" || a[2]=="~" || a[2]=="~*") loc=strip_brace(a[3]);
       else loc=strip_brace(a[2]);
       next
@@ -568,11 +559,24 @@ http_location_header() {
   http_headers "$url" | awk 'tolower($1)=="location:"{print $2; exit}' | tr -d '\r' || true
 }
 
-assert_http_301_for_path() {
+assert_http_policy_for_path() {
   local path="$1"
   local url="${BASE_HTTP_URL}${path}"
   local code loc
+
   code="$(http_status "$url")"
+
+  if [[ "$path" == "/healthz" ]]; then
+    if [[ "$code" != "200" ]]; then
+      say "  GET $url : $code (expected 200 for /healthz)"
+      say "  headers:"
+      http_headers "$url" | sed -n '1,40p' || true
+      die "Expected HTTP 200 for /healthz"
+    fi
+    say "  GET $url : 200 OK"
+    return 0
+  fi
+
   if [[ "$code" != "301" ]]; then
     say "  GET $url : $code (expected 301)"
     say "  headers:"
@@ -671,9 +675,10 @@ main() {
   check_ports_published
 
   say ""
-  say "Step 9: HTTP->HTTPS redirect checks"
-  wait_http_status_in "$BASE_HTTP_URL/healthz" "301" || die "expected HTTP 301 redirect for /healthz"
-  say "  GET $BASE_HTTP_URL/healthz : 301 redirect OK"
+  say "Step 9: HTTP checks"
+  # /healthz is allowed to be 200 on HTTP (per your requirement)
+  wait_http_status_in "$BASE_HTTP_URL/healthz" "200" || die "expected HTTP 200 for /healthz"
+  say "  GET $BASE_HTTP_URL/healthz : 200 OK"
 
   say ""
   say "Step 10: HTTPS liveness"
@@ -682,13 +687,8 @@ main() {
 
   check_origin_bypass_if_configured
 
-  # -----------------------------
-  # UPDATED STEP (requested):
-  # Check that ALL auth-protected locations in nginx config redirect with HTTP 301
-  # -----------------------------
   say ""
-  say "Step 11: Protected URLs (from nginx config) must return HTTP 301"
-
+  say "Step 11: Protected URLs (from nginx config) must return HTTP 301 (except /healthz)"
   mapfile -t PROTECTED_PATHS < <(get_protected_locations_from_nginx || true)
   if [[ "${#PROTECTED_PATHS[@]}" -eq 0 ]]; then
     say "  DEBUG: could not extract protected locations from nginx -T."
@@ -703,7 +703,8 @@ main() {
 
   say ""
   for p in "${PROTECTED_PATHS[@]}"; do
-    assert_http_301_for_path "$p"
+    # Safety: if someone ever puts auth_basic on /healthz, still allow 200.
+    assert_http_policy_for_path "$p"
   done
 
   if [[ "$CHECK_STATIC" == "1" ]]; then
