@@ -400,15 +400,8 @@ run_job_smoke_test() {
   local deadline=$((SECONDS + JOB_WAIT_SECS))
   status=""
   while (( SECONDS < deadline )); do
-    status="$(curl "${tls_flag[@]}" $(curl_common_flags) "${BASE_HTTPS_URL}/api/jobs/$job_id" | python3 - <<'PY' 2>/dev/null || true
-import sys, json
-try:
-  obj=json.load(sys.stdin)
-  print(obj.get("status",""))
-except Exception:
-  print("")
-PY
-)"
+    status="$(curl "${tls_flag[@]}" $(curl_common_flags) "${BASE_HTTPS_URL}/api/jobs/$job_id")"
+    status="$(json_get "$status" "status")"
     status="$(trim_ws "$status")"
     if [[ "$status" == "SUCCEEDED" ]]; then
       break
