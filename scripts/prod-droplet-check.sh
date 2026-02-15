@@ -192,10 +192,39 @@ nginx_logs_tail() {
   dc logs --tail="$LOG_TAIL" nginx 2>/dev/null | sed -n "1,${LOG_TAIL}p" || true
 }
 
+nginx_htpasswd_diagnostics() {
+  say ""
+  say "nginx htpasswd diagnostics:"
+
+  dc exec -T nginx sh -lc 'ls -l /etc/nginx/.htpasswd 2>/dev/null || true' 2>/dev/null || true
+  dc exec -T nginx sh -lc 'test -r /etc/nginx/.htpasswd && echo "  OK: /etc/nginx/.htpasswd is readable" || echo "  FAIL: /etc/nginx/.htpasswd not readable/missing"' 2>/dev/null || true
+
+  local firstline hash
+  firstline="$(dc exec -T nginx sh -lc 'sed -n "1p" /etc/nginx/.htpasswd 2>/dev/null || true' 2>/dev/null || true)"
+  if [[ -n "${firstline:-}" && "${firstline}" == *:* ]]; then
+    hash="${firstline#*:}"
+    if [[ "$hash" == \$2y\$* || "$hash" == \$2b\$* || "$hash" == \$2a\$* ]]; then
+      say "  htpasswd hash scheme: bcrypt"
+      local osrel
+      osrel="$(dc exec -T nginx sh -lc 'cat /etc/os-release 2>/dev/null || true' 2>/dev/null || true)"
+      if echo "$osrel" | grep -qi 'alpine'; then
+        say "  WARN: nginx container appears Alpine-based; bcrypt htpasswd commonly causes 500 on auth."
+        say "        Fix: regenerate htpasswd with MD5 (-m) OR use non-alpine nginx image."
+      fi
+    elif [[ "$hash" == \$apr1\$* ]]; then
+      say "  htpasswd hash scheme: apr1 (MD5) (good compatibility)"
+    elif [[ "$hash" == \{SHA\}* ]]; then
+      say "  htpasswd hash scheme: SHA1 (works but weaker)"
+    else
+      say "  htpasswd hash scheme: unknown"
+    fi
+  else
+    say "  WARN: could not read /etc/nginx/.htpasswd first line (missing/empty?)"
+  fi
+}
+
 assert_protected_endpoint() {
-  # Verifies:
-  # - Without creds: 401/403
-  # - With creds (if provided): expected_auth
+  # (kept as-is; not used by the new "301 redirect" check, but left intact)
   local path="$1"
   local expected_noauth="${2:-401 403}"
   local expected_auth="${3:-200}"
@@ -226,7 +255,6 @@ assert_protected_endpoint() {
         http_body_head_auth "$url" || true
         nginx_logs_tail
         nginx_htpasswd_diagnostics
-        # Helpful: show relevant locations (doesn't change behavior, only prints)
         nginx_location_excerpt "location ^~ /admin/"
         nginx_location_excerpt "location = /metrics"
         nginx_location_excerpt "location = /api/schema/"
@@ -246,37 +274,6 @@ container_upstream_status_from_nginx() {
   dc exec -T nginx sh -lc \
     "curl -sS -o /dev/null -w '%{http_code}' -H 'Host: ${DOMAIN}' -H 'X-Forwarded-Proto: https' http://api:8000${path} || echo 000" \
     2>/dev/null || echo "000"
-}
-
-nginx_htpasswd_diagnostics() {
-  say ""
-  say "nginx htpasswd diagnostics:"
-
-  dc exec -T nginx sh -lc 'ls -l /etc/nginx/.htpasswd 2>/dev/null || true' 2>/dev/null || true
-  dc exec -T nginx sh -lc 'test -r /etc/nginx/.htpasswd && echo "  OK: /etc/nginx/.htpasswd is readable" || echo "  FAIL: /etc/nginx/.htpasswd not readable/missing"' 2>/dev/null || true
-
-  local firstline hash
-  firstline="$(dc exec -T nginx sh -lc 'sed -n "1p" /etc/nginx/.htpasswd 2>/dev/null || true' 2>/dev/null || true)"
-  if [[ -n "${firstline:-}" && "${firstline}" == *:* ]]; then
-    hash="${firstline#*:}"
-    if [[ "$hash" == \$2y\$* || "$hash" == \$2b\$* || "$hash" == \$2a\$* ]]; then
-      say "  htpasswd hash scheme: bcrypt"
-      local osrel
-      osrel="$(dc exec -T nginx sh -lc 'cat /etc/os-release 2>/dev/null || true' 2>/dev/null || true)"
-      if echo "$osrel" | grep -qi 'alpine'; then
-        say "  WARN: nginx container appears Alpine-based; bcrypt htpasswd commonly causes 500 on auth."
-        say "        Fix: regenerate htpasswd with MD5 (-m) OR use non-alpine nginx image."
-      fi
-    elif [[ "$hash" == \$apr1\$* ]]; then
-      say "  htpasswd hash scheme: apr1 (MD5) (good compatibility)"
-    elif [[ "$hash" == \{SHA\}* ]]; then
-      say "  htpasswd hash scheme: SHA1 (works but weaker)"
-    else
-      say "  htpasswd hash scheme: unknown"
-    fi
-  else
-    say "  WARN: could not read /etc/nginx/.htpasswd first line (missing/empty?)"
-  fi
 }
 
 diagnose_readyz() {
@@ -539,6 +536,53 @@ check_origin_bypass_if_configured() {
   [[ "$code" == "200" ]] || die "origin bypass /healthz expected 200, got $code"
 }
 
+# ---------------------------------------------------------------------
+# NEW TASK: check that ALL auth_basic-protected locations redirect on HTTP with 301
+# ---------------------------------------------------------------------
+
+get_protected_locations_from_nginx() {
+  # Extract location paths whose block contains auth_basic.
+  # We only keep locations that start with '/' (skip regex locations).
+  dc exec -T nginx sh -lc 'nginx -T 2>/dev/null' 2>/dev/null | awk '
+    function strip_brace(s){ sub(/\{.*/,"",s); gsub(/[[:space:]]+/,"",s); return s }
+    BEGIN{inloc=0; hasauth=0; loc=""}
+    /^[[:space:]]*location[[:space:]]/{
+      inloc=1; hasauth=0; loc="";
+      n=split($0,a,/[[:space:]]+/);
+      # a[1]=location, a[2]=maybe modifier, a[3]=path
+      if (a[2]=="=" || a[2]=="^~" || a[2]=="~" || a[2]=="~*") loc=strip_brace(a[3]);
+      else loc=strip_brace(a[2]);
+      next
+    }
+    inloc==1 && $0 ~ /auth_basic[[:space:]]/ { hasauth=1 }
+    inloc==1 && /^[[:space:]]*}[[:space:]]*$/{
+      if (hasauth==1 && loc ~ /^\//) print loc;
+      inloc=0; hasauth=0; loc="";
+      next
+    }
+  ' | sort -u
+}
+
+http_location_header() {
+  local url; url="$(trim_ws "${1-}")"
+  http_headers "$url" | awk 'tolower($1)=="location:"{print $2; exit}' | tr -d '\r' || true
+}
+
+assert_http_301_for_path() {
+  local path="$1"
+  local url="${BASE_HTTP_URL}${path}"
+  local code loc
+  code="$(http_status "$url")"
+  if [[ "$code" != "301" ]]; then
+    say "  GET $url : $code (expected 301)"
+    say "  headers:"
+    http_headers "$url" | sed -n '1,40p' || true
+    die "Expected HTTP 301 for protected path: $path"
+  fi
+  loc="$(http_location_header "$url")"
+  say "  GET $url : 301 OK -> Location: ${loc:-<missing>}"
+}
+
 main() {
   need_cmd docker
   need_cmd git
@@ -628,10 +672,8 @@ main() {
 
   say ""
   say "Step 9: HTTP->HTTPS redirect checks"
-  wait_http_status_in "$BASE_HTTP_URL/healthz" "301 302 308" || die "expected HTTP redirect for /healthz"
-  say "  GET $BASE_HTTP_URL/healthz : redirect OK"
-  wait_http_status_in "$BASE_HTTP_URL/readyz" "301 302 308 401 403 404" || die "unexpected /readyz behavior on HTTP"
-  say "  GET $BASE_HTTP_URL/readyz : redirect or policy OK"
+  wait_http_status_in "$BASE_HTTP_URL/healthz" "301" || die "expected HTTP 301 redirect for /healthz"
+  say "  GET $BASE_HTTP_URL/healthz : 301 redirect OK"
 
   say ""
   say "Step 10: HTTPS liveness"
@@ -640,18 +682,29 @@ main() {
 
   check_origin_bypass_if_configured
 
+  # -----------------------------
+  # UPDATED STEP (requested):
+  # Check that ALL auth-protected locations in nginx config redirect with HTTP 301
+  # -----------------------------
   say ""
-  say "Step 11: Access-control checks (through domain)"
-  assert_protected_endpoint "/admin/sql" "401 403" "200 302"
-  assert_protected_endpoint "/admin/" "401 403" "200 302"
-  assert_protected_endpoint "/metrics" "401 403" "200"
-  assert_protected_endpoint "/api/schema" "401 403" "200 301 302"
+  say "Step 11: Protected URLs (from nginx config) must return HTTP 301"
 
-  if [[ "$READYZ_EXPECT_AUTH" == "1" ]]; then
-    assert_protected_endpoint "/readyz" "401 403" "200"
-  else
-    assert_status_in "$BASE_HTTPS_URL/readyz" "200"
+  mapfile -t PROTECTED_PATHS < <(get_protected_locations_from_nginx || true)
+  if [[ "${#PROTECTED_PATHS[@]}" -eq 0 ]]; then
+    say "  DEBUG: could not extract protected locations from nginx -T."
+    nginx_logs_tail
+    die "no auth_basic-protected locations found in nginx config (unexpected)"
   fi
+
+  say "  protected locations found:"
+  for p in "${PROTECTED_PATHS[@]}"; do
+    say "    - $p"
+  done
+
+  say ""
+  for p in "${PROTECTED_PATHS[@]}"; do
+    assert_http_301_for_path "$p"
+  done
 
   if [[ "$CHECK_STATIC" == "1" ]]; then
     say ""
