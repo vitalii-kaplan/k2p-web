@@ -48,6 +48,9 @@ BASIC_AUTH_PASS="${BASIC_AUTH_PASS:-}"
 # ORIGIN_IP="x.x.x.x" enables: curl --resolve DOMAIN:443:ORIGIN_IP ...
 ORIGIN_IP="${ORIGIN_IP:-}"
 
+# NEW: logging controls (console only)
+LOG_TAIL="${LOG_TAIL:-200}"
+
 # -----------------------------------------------------------------------------
 
 repo_root() { git rev-parse --show-toplevel 2>/dev/null || pwd; }
@@ -120,6 +123,18 @@ http_headers() {
   curl "${tls_flag[@]}" $(curl_common_flags) -I "$url" 2>/dev/null || true
 }
 
+# NEW: headers for authenticated request (so you see the real response headers)
+http_headers_auth() {
+  local url; url="$(trim_ws "${1-}")"
+  local user pass
+  read -r user pass < <(basic_auth_pair || true)
+  [[ -n "${user:-}" && -n "${pass:-}" ]] || return 0
+
+  local tls_flag=()
+  [[ "$CURL_INSECURE" == "1" ]] && tls_flag=(-k)
+  curl "${tls_flag[@]}" $(curl_common_flags) -I -u "${user}:${pass}" "$url" 2>/dev/null || true
+}
+
 http_body_head_auth() {
   local url; url="$(trim_ws "${1-}")"
   local user pass
@@ -158,6 +173,25 @@ assert_status_in() {
   die "GET $url expected one of [$expected], got $code"
 }
 
+# NEW: nginx debug helpers (console output)
+nginx_location_excerpt() {
+  # usage: nginx_location_excerpt "location = /readyz"
+  local marker="$1"
+  say ""
+  say "  nginx -T excerpt for: $marker"
+  dc exec -T nginx sh -lc 'nginx -T 2>/dev/null' | awk -v m="$marker" '
+    index($0,m)>0 {p=1; print "---- BEGIN ----"}
+    p==1 {print}
+    p==1 && /^\s*}\s*$/ {print "---- END ----"; exit}
+  ' 2>/dev/null || true
+}
+
+nginx_logs_tail() {
+  say ""
+  say "  nginx logs tail (${LOG_TAIL}):"
+  dc logs --tail="$LOG_TAIL" nginx 2>/dev/null | sed -n "1,${LOG_TAIL}p" || true
+}
+
 assert_protected_endpoint() {
   # Verifies:
   # - Without creds: 401/403
@@ -182,12 +216,23 @@ assert_protected_endpoint() {
       say "  AUTH GET $url : $code OK"
     else
       say "  AUTH GET $url : $code (expected [$expected_auth])"
-      say "  headers:"
+      say "  headers (no-auth):"
       http_headers "$url" | sed -n '1,40p' || true
+      say "  headers (auth):"
+      http_headers_auth "$url" | sed -n '1,40p' || true
+
       if [[ "$code" == "500" ]]; then
-        say "  body (first lines):"
+        say "  body (auth, first lines):"
         http_body_head_auth "$url" || true
+        nginx_logs_tail
+        nginx_htpasswd_diagnostics
+        # Helpful: show relevant locations (doesn't change behavior, only prints)
+        nginx_location_excerpt "location ^~ /admin/"
+        nginx_location_excerpt "location = /metrics"
+        nginx_location_excerpt "location = /api/schema/"
+        nginx_location_excerpt "location = /readyz"
       fi
+
       die "Protected endpoint '$path' failed with Basic Auth (status=$code)."
     fi
   else
@@ -248,14 +293,15 @@ diagnose_readyz() {
     say "  external:  AUTH GET $ext : $ext_auth_code"
     if [[ "$ext_auth_code" == "500" ]]; then
       say "  FAIL: authenticated /readyz returns 500 (origin nginx error)."
-      say "  headers:"
+      say "  headers (no-auth):"
       http_headers "$ext" | sed -n '1,40p' || true
-      say "  body (first lines):"
+      say "  headers (auth):"
+      http_headers_auth "$ext" | sed -n '1,40p' || true
+      say "  body (auth, first lines):"
       http_body_head_auth "$ext" || true
-      say ""
-      say "  nginx logs tail:"
-      dc logs --tail=200 nginx 2>/dev/null | sed -n '1,200p' || true
+      nginx_logs_tail
       nginx_htpasswd_diagnostics
+      nginx_location_excerpt "location = /readyz"
       die "authenticated /readyz returned 500"
     fi
   fi
@@ -288,13 +334,11 @@ json_get() {
   local js="$1" key="$2"
 
   if command -v jq >/dev/null 2>&1; then
-    # -e: fail if null/false; we want empty instead of failing the script, so "|| true"
     printf '%s' "$js" | jq -r --arg k "$key" '.[$k] // ""' 2>/dev/null || true
     return 0
   fi
 
   if command -v python3 >/dev/null 2>&1; then
-    # No heredoc here (avoids the bash parse error you hit).
     printf '%s' "$js" | python3 -c 'import sys,json
 k=sys.argv[1]
 try:
@@ -307,7 +351,6 @@ except Exception:
     return 0
   fi
 
-  # Naive fallback
   printf '%s' "$js" | tr -d '\r\n' | sed -n "s/.*\"$key\"[[:space:]]*:[[:space:]]*\"\\([^\"]*\\)\".*/\\1/p" | head -n1 || true
 }
 
