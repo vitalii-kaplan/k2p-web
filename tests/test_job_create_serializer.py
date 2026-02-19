@@ -62,11 +62,12 @@ class JobCreateSerializerTests(TestCase):
 
         self.assertTrue(job.input_key.startswith(f"jobs/{job.id}/"))
         self.assertTrue(job.input_key.endswith("/discounts.zip"))
-        meta = JobSettingsMeta.objects.get(job=job)
+        meta = JobSettingsMeta.objects.get(file_name="CSV Reader (#1)/settings.xml")
         self.assertEqual(meta.file_name, "CSV Reader (#1)/settings.xml")
         self.assertEqual(meta.factory, "org.knime.Factory")
         self.assertEqual(meta.node_name, "CSV Reader")
         self.assertEqual(meta.name, "CSV Reader")
+        self.assertEqual(meta.job_status, job.status)
         logger.info.assert_called()
         payload = logger.info.call_args[0][0]
         self.assertIn('"event": "job_created"', payload)
@@ -90,10 +91,11 @@ class JobCreateSerializerTests(TestCase):
             with override_settings(JOB_STORAGE_ROOT=tmpdir):
                 job = ser.save()
 
-        meta = JobSettingsMeta.objects.get(job=job, file_name="settings.xml")
+        meta = JobSettingsMeta.objects.get(file_name="settings.xml")
         self.assertEqual(meta.factory, "org.knime.base.node.meta.xvalidation.XValidatePartitionerFactory")
         self.assertEqual(meta.node_name, "X-Partitioner")
         self.assertEqual(meta.name, "X-Partitioner")
+        self.assertEqual(meta.job_status, job.status)
 
     def test_fixture_discounts_zip_is_valid_workflow(self) -> None:
         fixture = Path(__file__).resolve().parents[0] / "data" / "discounts.zip"

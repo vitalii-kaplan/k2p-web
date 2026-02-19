@@ -44,7 +44,7 @@ class Job(models.Model):
 
 
 class JobSettingsMeta(models.Model):
-    job = models.ForeignKey(Job, on_delete=models.CASCADE, related_name="settings_meta")
+    job_status = models.CharField(max_length=16, choices=Job.Status.choices, default=Job.Status.QUEUED)
     created_at = models.DateTimeField(auto_now_add=True)
     file_name = models.CharField(max_length=512)
     factory = models.CharField(max_length=512, null=True, blank=True)
@@ -52,4 +52,4 @@ class JobSettingsMeta(models.Model):
     name = models.CharField(max_length=255, null=True, blank=True)
 
     def __str__(self) -> str:
-        return f"{self.file_name} ({self.job_id})"
+        return f"{self.file_name} ({self.job_status})"

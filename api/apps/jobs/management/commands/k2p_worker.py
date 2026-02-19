@@ -45,7 +45,6 @@ class Command(BaseCommand):
         runner = self._build_runner()
         cleanup_interval_s = int(getattr(settings, "RETENTION_CLEANUP_INTERVAL_SECS", 300))
         next_cleanup = time.time() + cleanup_interval_s
-
         # Expose worker metrics
         addr = os.environ.get("WORKER_METRICS_ADDR", "0.0.0.0")
         port = int(os.environ.get("WORKER_METRICS_PORT", "8001"))

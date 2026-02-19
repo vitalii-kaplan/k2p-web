@@ -187,7 +187,7 @@ class JobCreateSerializer(serializers.Serializer):
                     pass
 
                 JobSettingsMeta.objects.create(
-                    job=job,
+                    job_status=job.status,
                     file_name=name,
                     factory=factory,
                     node_name=node_name,
