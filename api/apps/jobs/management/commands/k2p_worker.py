@@ -104,7 +104,7 @@ class Command(BaseCommand):
                 json.dumps(
                     {
                         "event": "job_picked",
-                        "job_id": str(job.id),
+                        "job_id": str(job.uuid),
                     }
                 )
             )
@@ -118,7 +118,7 @@ class Command(BaseCommand):
 
         # input_key is e.g. jobs/<uuid>/<stem>.zip stored under JOB_STORAGE_ROOT
         in_host = Path(settings.JOB_STORAGE_ROOT) / job.input_key
-        out_dir = Path(settings.RESULT_STORAGE_ROOT) / f"jobs/{job.id}"
+        out_dir = Path(settings.RESULT_STORAGE_ROOT) / f"jobs/{job.uuid}"
         out_dir.mkdir(parents=True, exist_ok=True)
 
         if not in_host.exists():
@@ -174,7 +174,7 @@ class Command(BaseCommand):
         error_message = ""
 
         try:
-            result = runner.run_job(str(job.id), workflow_dir, out_dir)
+            result = runner.run_job(str(job.uuid), workflow_dir, out_dir)
             exit_code = result.get("exit_code")
             stdout_tail = result.get("stdout_tail", "") or ""
             stderr_tail = result.get("stderr_tail", "") or ""
@@ -183,7 +183,7 @@ class Command(BaseCommand):
                 json.dumps(
                     {
                         "event": "runner_job_finished",
-                        "job_id": str(job.id),
+                        "job_id": str(job.uuid),
                         "status": "SUCCEEDED",
                     }
                 )
@@ -201,7 +201,7 @@ class Command(BaseCommand):
                 f"(exit={exc.exit_code}, stderr_tail={exc.stderr_tail[:1000]}, stdout_tail={exc.stdout_tail[:1000]})"
             )
 
-        result_key = f"jobs/{job.id}/"
+        result_key = f"jobs/{job.uuid}/"
         finished_at = timezone.now()
         Job.objects.filter(id=job.id).update(
             status=status,
@@ -232,7 +232,7 @@ class Command(BaseCommand):
             json.dumps(
                 {
                     "event": "job_finished",
-                    "job_id": str(job.id),
+                    "job_id": str(job.uuid),
                     "status": status.value,
                     "duration_seconds": duration_s,
                     "error_code": error_code,
@@ -260,8 +260,8 @@ class Command(BaseCommand):
     def _delete_job_artifacts(self, job: Job) -> None:
         job_root = Path(settings.JOB_STORAGE_ROOT).resolve()
         result_root = Path(settings.RESULT_STORAGE_ROOT).resolve()
-        job_dir = (job_root / f"jobs/{job.id}").resolve()
-        result_dir = (result_root / f"jobs/{job.id}").resolve()
+        job_dir = (job_root / f"jobs/{job.uuid}").resolve()
+        result_dir = (result_root / f"jobs/{job.uuid}").resolve()
         if job_dir == job_root or job_root not in job_dir.parents:
             return
         if result_dir == result_root or result_root not in result_dir.parents:

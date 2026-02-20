@@ -81,7 +81,7 @@ class JobsCreateView(APIView):
 
 class JobDetailView(APIView):
     def get(self, request, job_id):
-        job = get_object_or_404(Job, id=job_id)
+        job = get_object_or_404(Job, uuid=job_id)
         return Response(JobSerializer(job).data, status=status.HTTP_200_OK)
 
 
@@ -93,7 +93,7 @@ class JobResultZipView(APIView):
     """
 
     def get(self, request, job_id):
-        job = get_object_or_404(Job, id=job_id)
+        job = get_object_or_404(Job, uuid=job_id)
 
         if job.status != Job.Status.SUCCEEDED:
             return Response(
@@ -111,7 +111,7 @@ class JobResultZipView(APIView):
         if getattr(job, "result_key", ""):
             results_dir = Path(settings.RESULT_STORAGE_ROOT) / job.result_key
         else:
-            results_dir = Path(settings.RESULT_STORAGE_ROOT) / f"jobs/{job.id}"
+            results_dir = Path(settings.RESULT_STORAGE_ROOT) / f"jobs/{job.uuid}"
 
         results_dir = results_dir.resolve()
         root = Path(settings.RESULT_STORAGE_ROOT).resolve()
@@ -139,7 +139,7 @@ class JobResultZipView(APIView):
 
         tmp.seek(0)
 
-        filename = f"{job.id}.zip"
+        filename = f"{job.uuid}.zip"
         return FileResponse(tmp, as_attachment=True, filename=filename, content_type="application/zip")
 
 
@@ -151,10 +151,10 @@ class JobLogsView(APIView):
     """
 
     def get(self, request, job_id):
-        job = get_object_or_404(Job, id=job_id)
+        job = get_object_or_404(Job, uuid=job_id)
         return Response(
             {
-                "id": str(job.id),
+                "id": str(job.uuid),
                 "status": job.status,
                 "stdout_tail": job.stdout_tail or "",
                 "stderr_tail": job.stderr_tail or "",

@@ -28,6 +28,7 @@ Project-specific guidance for coding agents working in this repository.
 - If metrics disagree between `:8000` and `:8001`, compare these two log events first.
 - Docker runner requires host-visible paths for job/result storage:
   - `HOST_JOB_STORAGE_ROOT`, `HOST_RESULT_STORAGE_ROOT` should be set when running worker containers via Docker.
+- Schema convention: every table must use an auto-increment numeric primary key (e.g., `BigAutoField`), even if there is another unique identifier like a UUID.
 
 ## Metrics conventions
 

@@ -60,7 +60,7 @@ class JobCreateSerializerTests(TestCase):
                 with patch("apps.jobs.serializers.logger") as logger:
                     job = ser.save()
 
-        self.assertTrue(job.input_key.startswith(f"jobs/{job.id}/"))
+        self.assertTrue(job.input_key.startswith(f"jobs/{job.uuid}/"))
         self.assertTrue(job.input_key.endswith("/discounts.zip"))
         meta = JobSettingsMeta.objects.get(file_name="CSV Reader (#1)/settings.xml")
         self.assertEqual(meta.file_name, "CSV Reader (#1)/settings.xml")

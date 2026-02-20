@@ -11,7 +11,8 @@ class Job(models.Model):
         SUCCEEDED = "SUCCEEDED", "Succeeded"
         FAILED = "FAILED", "Failed"
 
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    id = models.BigAutoField(primary_key=True)
+    uuid = models.UUIDField(default=uuid.uuid4, editable=False, unique=True, db_index=True)
 
     created_at = models.DateTimeField(auto_now_add=True)
     started_at = models.DateTimeField(null=True, blank=True)
@@ -40,7 +41,7 @@ class Job(models.Model):
     error_message = models.TextField(blank=True)
 
     def __str__(self) -> str:
-        return f"{self.id} [{self.status}]"
+        return f"{self.uuid} [{self.status}]"
 
 
 class JobSettingsMeta(models.Model):

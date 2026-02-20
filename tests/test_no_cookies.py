@@ -43,7 +43,7 @@ class NoCookieTests(TestCase):
 
     def test_get_job_no_set_cookie(self) -> None:
         job = Job.objects.create(status=Job.Status.QUEUED)
-        resp = self.client.get(f"/api/jobs/{job.id}")
+        resp = self.client.get(f"/api/jobs/{job.uuid}")
         self.assertEqual(resp.status_code, 200)
         self._assert_no_set_cookie(resp)
 

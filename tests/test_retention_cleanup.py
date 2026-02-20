@@ -34,8 +34,8 @@ class RetentionCleanupTests(TestCase):
                 )
 
                 # create artifacts
-                (job_root / f"jobs/{job.id}").mkdir(parents=True, exist_ok=True)
-                (result_root / f"jobs/{job.id}").mkdir(parents=True, exist_ok=True)
+                (job_root / f"jobs/{job.uuid}").mkdir(parents=True, exist_ok=True)
+                (result_root / f"jobs/{job.uuid}").mkdir(parents=True, exist_ok=True)
 
                 Command()._cleanup_old_jobs()
 

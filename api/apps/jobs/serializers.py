@@ -100,7 +100,7 @@ class JobCreateSerializer(serializers.Serializer):
 
         stem = self._safe_stem(getattr(f, "name", "bundle.zip"))
         # Store under JOB_STORAGE_ROOT/jobs/<uuid>/<stem>.zip (repo-local var/ for dev)
-        rel_key = f"jobs/{job.id}/{stem}.zip"
+        rel_key = f"jobs/{job.uuid}/{stem}.zip"
 
         root = getattr(settings, "JOB_STORAGE_ROOT", None)
         if root is None:
@@ -203,7 +203,7 @@ class JobCreateSerializer(serializers.Serializer):
             json.dumps(
                 {
                     "event": "job_created",
-                    "job_id": str(job.id),
+                    "job_id": str(job.uuid),
                     "input_size": job.input_size,
                     "input_sha256_prefix": (job.input_sha256 or "")[:12],
                 }
@@ -214,6 +214,8 @@ class JobCreateSerializer(serializers.Serializer):
 
 
 class JobSerializer(serializers.ModelSerializer):
+    id = serializers.UUIDField(source="uuid", read_only=True)
+
     class Meta:
         model = Job
         fields = [

@@ -66,7 +66,7 @@ class JobsViewsTests(TestCase):
 
     def test_result_zip_requires_success(self) -> None:
         job = Job.objects.create(status=Job.Status.QUEUED)
-        resp = self.client.get(f"/api/jobs/{job.id}/result.zip")
+        resp = self.client.get(f"/api/jobs/{job.uuid}/result.zip")
         self.assertEqual(resp.status_code, 409)
         self.assertEqual(resp.data["error"]["code"], "job_not_ready")
 
@@ -74,7 +74,7 @@ class JobsViewsTests(TestCase):
         job = Job.objects.create(status=Job.Status.SUCCEEDED)
         with tempfile.TemporaryDirectory() as tmpdir:
             with override_settings(RESULT_STORAGE_ROOT=tmpdir):
-                resp = self.client.get(f"/api/jobs/{job.id}/result.zip")
+                resp = self.client.get(f"/api/jobs/{job.uuid}/result.zip")
 
         self.assertEqual(resp.status_code, 500)
         self.assertEqual(resp.data["error"]["code"], "missing_results")
@@ -83,7 +83,7 @@ class JobsViewsTests(TestCase):
         job = Job.objects.create(status=Job.Status.SUCCEEDED, result_key="../outside")
         with tempfile.TemporaryDirectory() as tmpdir:
             with override_settings(RESULT_STORAGE_ROOT=tmpdir):
-                resp = self.client.get(f"/api/jobs/{job.id}/result.zip")
+                resp = self.client.get(f"/api/jobs/{job.uuid}/result.zip")
 
         self.assertEqual(resp.status_code, 500)
         self.assertEqual(resp.data["error"]["code"], "general_failure")
@@ -91,12 +91,12 @@ class JobsViewsTests(TestCase):
     def test_result_zip_streams_zip(self) -> None:
         job = Job.objects.create(status=Job.Status.SUCCEEDED)
         with tempfile.TemporaryDirectory() as tmpdir:
-            results_dir = Path(tmpdir) / f"jobs/{job.id}"
+            results_dir = Path(tmpdir) / f"jobs/{job.uuid}"
             results_dir.mkdir(parents=True, exist_ok=True)
             (results_dir / "out.txt").write_text("ok", encoding="utf-8")
 
             with override_settings(RESULT_STORAGE_ROOT=tmpdir):
-                resp = self.client.get(f"/api/jobs/{job.id}/result.zip")
+                resp = self.client.get(f"/api/jobs/{job.uuid}/result.zip")
 
         self.assertEqual(resp.status_code, 200)
         data = b"".join(resp.streaming_content)
@@ -109,7 +109,7 @@ class JobsViewsTests(TestCase):
             stdout_tail="hello",
             stderr_tail="boom",
         )
-        resp = self.client.get(f"/api/jobs/{job.id}/logs")
+        resp = self.client.get(f"/api/jobs/{job.uuid}/logs")
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(resp.data["stdout_tail"], "hello")
         self.assertEqual(resp.data["stderr_tail"], "boom")
