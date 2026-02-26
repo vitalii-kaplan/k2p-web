@@ -43,6 +43,7 @@ class Command(BaseCommand):
     def handle(self, *args, **opts):
         sleep_s = float(opts["sleep"])
         runner = self._build_runner()
+        self._warmup_runner(runner)
         cleanup_interval_s = int(getattr(settings, "RETENTION_CLEANUP_INTERVAL_SECS", 300))
         next_cleanup = time.time() + cleanup_interval_s
         # Expose worker metrics
@@ -87,6 +88,38 @@ class Command(BaseCommand):
             host_job_storage_root=str(getattr(settings, "HOST_JOB_STORAGE_ROOT", "")),
             host_result_storage_root=str(getattr(settings, "HOST_RESULT_STORAGE_ROOT", "")),
             logger=logger,
+        )
+
+    def _warmup_runner(self, runner: DockerRunner) -> None:
+        logger.info(
+            json.dumps(
+                {
+                    "event": "runner_warmup_start",
+                    "image": runner.image,
+                }
+            )
+        )
+        try:
+            runner.ensure_image()
+        except RunnerError as exc:
+            logger.error(
+                json.dumps(
+                    {
+                        "event": "runner_warmup_failed",
+                        "image": runner.image,
+                        "error": str(exc),
+                        "exit_code": exc.exit_code,
+                    }
+                )
+            )
+            raise RuntimeError(f"runner warmup failed for image: {runner.image}") from exc
+        logger.info(
+            json.dumps(
+                {
+                    "event": "runner_warmup_ok",
+                    "image": runner.image,
+                }
+            )
         )
 
     def _run_one(self, *, runner: DockerRunner) -> None:

@@ -12,9 +12,9 @@
         migrate makemigrations shell reset-db \
         docker-build docker-pull docker-ps \
         docker-api-up docker-api-down docker-api-logs docker-api-shell \
-        docker-migrate \
+        docker-migrate ensure-k2p-image \
         docker-worker-up docker-worker-down docker-worker-logs docker-worker-shell \
-        docker-dev-up docker-dev-down venv tag-release \
+        docker-dev-up docker-dev-down require-k2p-image venv tag-release \
         prod-up prod-down prod-ps prod-api-logs prod-worker-logs prod-nginx-logs prod-migrate prod-check \
         update-cf-ips \
         prod-clean-restart
@@ -44,6 +44,36 @@ DOCKER_DB_ENGINE ?= sqlite
 
 # Mount repo into containers at /repo (matches your kind dev mount pattern)
 REPO_MOUNT ?= /repo
+
+DOCKER_TARGETS := docker-build docker-pull docker-ps docker-migrate docker-api-up docker-api-down docker-api-logs docker-api-shell docker-worker-up docker-worker-down docker-worker-logs docker-worker-shell docker-dev-up docker-dev-down
+PROD_TARGETS := prod-up prod-down prod-ps prod-api-logs prod-worker-logs prod-nginx-logs prod-migrate prod-check prod-clean-restart
+
+$(DOCKER_TARGETS) $(PROD_TARGETS): require-k2p-image
+
+require-k2p-image:
+	@if [ ! -f "$(ENV_FILE)" ]; then \
+		echo "ERROR: $(ENV_FILE) not found. Create it and set K2P_IMAGE=<repo>:<version>."; \
+		exit 1; \
+	fi
+	@K2P_IMAGE_VALUE="$$(awk -F= '/^[[:space:]]*K2P_IMAGE[[:space:]]*=/{print $$2}' "$(ENV_FILE)" | tail -n1 | xargs)"; \
+	K2P_IMAGE_VALUE="$${K2P_IMAGE_VALUE%\"}"; K2P_IMAGE_VALUE="$${K2P_IMAGE_VALUE#\"}"; \
+	K2P_IMAGE_VALUE="$${K2P_IMAGE_VALUE%\'}"; K2P_IMAGE_VALUE="$${K2P_IMAGE_VALUE#\'}"; \
+	if [ -z "$$K2P_IMAGE_VALUE" ]; then \
+		echo "ERROR: K2P_IMAGE is missing in $(ENV_FILE). Set K2P_IMAGE=<repo>:<version>."; \
+		exit 1; \
+	fi; \
+	case "$$K2P_IMAGE_VALUE" in \
+		*@sha256:*) ;; \
+		*:) echo "ERROR: K2P_IMAGE has no version tag: $$K2P_IMAGE_VALUE"; exit 1 ;; \
+		*:* ) ;; \
+		*) echo "ERROR: K2P_IMAGE must include a version tag (or digest): $$K2P_IMAGE_VALUE"; exit 1 ;; \
+	esac
+
+ensure-k2p-image: require-k2p-image
+	@if ! docker image inspect "$(K2P_IMAGE)" >/dev/null 2>&1; then \
+		echo "K2P image not found locally. Pulling $(K2P_IMAGE) ..."; \
+		docker pull "$(K2P_IMAGE)" || { echo "ERROR: failed to pull $(K2P_IMAGE)"; exit 1; }; \
+	fi
 
 help: ## Show this help
 	@awk 'BEGIN {FS = ":.*## "}; /^[A-Za-z0-9][^:]*:.*## / {printf "  %-20s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -149,7 +179,7 @@ docker-api-logs: ## Tail API logs
 docker-api-shell: ## Shell into API container
 	docker exec -it $(API_NAME) /bin/sh
 
-docker-worker-up: ## Start worker container (local Docker runner)
+docker-worker-up: ensure-k2p-image ## Start worker container (local Docker runner)
 	@docker rm -f $(WORKER_NAME) >/dev/null 2>&1 || true
 	docker run -d --name $(WORKER_NAME) \
 	  --env-file $(ENV_FILE) \
@@ -184,7 +214,7 @@ docker-dev-down: docker-worker-down docker-api-down ## Stop dev containers
 # -----------------------
 PROD_COMPOSE ?= docker-compose.prod.nginx.yml
 
-prod-up: ## Start production stack (api+nginx+postgres+worker)
+prod-up: ensure-k2p-image ## Start production stack (api+nginx+postgres+worker)
 	docker compose -f $(PROD_COMPOSE) up -d --remove-orphans
 
 prod-down: ## Stop production stack
@@ -205,13 +235,13 @@ prod-nginx-logs: ## Tail nginx logs
 prod-migrate: ## Run migrations in production stack
 	docker compose -f $(PROD_COMPOSE) run --rm api python manage.py migrate
 
-prod-check: ## Run your production smoke-check script
+prod-check: ensure-k2p-image ## Run your production smoke-check script
 	./scripts/prod-droplet-check.sh
 
 update-cf-ips: ## Refresh Cloudflare IP allowlist for nginx real_ip
 	./scripts/update_cloudflare_ips.sh
 
-prod-clean-restart: ## Rebuild + migrate + collectstatic + restart production stack
+prod-clean-restart: ensure-k2p-image ## Rebuild + migrate + collectstatic + restart production stack
 	docker compose -f $(PROD_COMPOSE) down --remove-orphans
 	./scripts/update_cloudflare_ips.sh
 	docker compose -f $(PROD_COMPOSE) build --no-cache --pull

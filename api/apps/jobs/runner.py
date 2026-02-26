@@ -95,6 +95,9 @@ class DockerRunner:
                 stderr_tail=(pull.stderr or "")[-1000:],
             )
 
+    def ensure_image(self) -> None:
+        self._ensure_image()
+
     def _resolve_host_path(self, path: Path) -> Path:
         if self.host_job_storage_root:
             try:
