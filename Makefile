@@ -10,6 +10,7 @@
 
 .PHONY: help dev server worker test test-py test-ui lint fmt \
         migrate makemigrations shell reset-db \
+        print-handlers prod-print-handlers \
         docker-build docker-pull docker-ps \
         docker-api-up docker-api-down docker-api-logs docker-api-shell \
         docker-migrate ensure-k2p-image \
@@ -125,6 +126,12 @@ makemigrations: ## Create migrations
 shell: ## Open Django shell
 	$(MANAGE) shell
 
+print-handlers: ## Print generated handlers CSV
+	cat var/static/meta/handlers.csv
+
+prod-print-handlers: ## Print generated handlers CSV from prod nginx container
+	docker compose -f $(PROD_COMPOSE) exec -T nginx cat /static/meta/handlers.csv
+
 reset-db: ## Flush DB and re-migrate
 	./scripts/reset-db.sh
 
@@ -165,6 +172,7 @@ docker-api-up: ## Start API container from image
 	  -e DB_ENGINE=$(DOCKER_DB_ENGINE) \
 	  -e REPO_ROOT=$(REPO_MOUNT) \
 	  -v "$(PWD):$(REPO_MOUNT)" \
+	  -v /var/run/docker.sock:/var/run/docker.sock \
 	  -p $(PORT):8000 \
 	  $(IMAGE) \
 	  python api/manage.py runserver 0.0.0.0:8000 --insecure

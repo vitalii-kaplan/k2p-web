@@ -187,6 +187,10 @@ _repo_static = REPO_ROOT / "static"
 if _repo_static.exists() and _repo_static not in STATICFILES_DIRS:
     STATICFILES_DIRS.append(_repo_static)
 STATIC_ROOT = str(resolve_under_repo(os.environ.get("STATIC_ROOT", "var/static")))
+K2P_HANDLERS_STATIC_FILE = os.environ.get(
+    "K2P_HANDLERS_STATIC_FILE",
+    str(Path(STATIC_ROOT) / "meta" / "handlers.csv"),
+)
 
 # If you don't use MEDIA at all, you can remove these.
 # Keep them under repo root, not under api/.

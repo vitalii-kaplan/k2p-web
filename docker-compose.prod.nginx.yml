@@ -60,6 +60,7 @@ services:
     volumes:
       - staticfiles:/static
       - ${JOBDATA_HOST_PATH:-./var}:/data
+      - /var/run/docker.sock:/var/run/docker.sock
 
   worker:
     build: .
