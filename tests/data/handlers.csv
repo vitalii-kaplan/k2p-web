@@ -1,0 +1,55 @@
+Color Manager,org.knime.base.node.viz.property.color.ColorManager2NodeFactory
+Column Appender,org.knime.base.node.preproc.columnappend2.ColumnAppender2NodeFactory
+Column Filter,org.knime.base.node.preproc.filter.column.DataColumnSpecFilterNodeFactory
+Column Renamer,org.knime.base.node.preproc.column.renamer.ColumnRenamerNodeFactory
+Concatenate,org.knime.base.node.preproc.append.row.AppendedRowsNodeFactory
+Csv Reader,org.knime.base.node.io.filehandling.csv.reader.CSVTableReaderNodeFactory
+Csv Writer,org.knime.base.node.io.filehandling.csv.writer.CSVWriter2NodeFactory
+Decision Tree Learner,org.knime.base.node.mine.decisiontree2.learner2.DecisionTreeLearnerNodeFactory3
+Decision Tree Predictor,org.knime.base.node.mine.decisiontree2.predictor2.DecTreePredictorNodeFactory
+Equal Size Sampling,org.knime.base.node.preproc.equalsizesampling.EqualSizeSamplingNodeFactory
+Excel Reader,org.knime.ext.poi3.node.io.filehandling.excel.reader.ExcelTableReaderNodeFactory
+Excel Writer,org.knime.ext.poi3.node.io.filehandling.excel.writer.ExcelTableWriterNodeFactory
+GBT Learner,org.knime.base.node.mine.treeensemble2.node.gradientboosting.learner.classification.GradientBoostingClassificationLearnerNodeFactory2
+GBT PMML Exporter,org.knime.base.node.mine.treeensemble2.node.gradientboosting.pmml.exporter.GBTPMMLExporterNodeFactory
+GBT Predictor,org.knime.base.node.mine.treeensemble2.node.gradientboosting.predictor.classification.GradientBoostingClassificationPredictorNodeFactory3
+KNN,org.knime.base.node.mine.knn.KnnNodeFactory2
+Linear Corellation,org.knime.base.node.preproc.correlation.compute2.CorrelationCompute2NodeFactory
+LogReg Learner,org.knime.base.node.mine.regression.logistic.learner4.LogRegLearnerNodeFactory4
+LogReg Predictor,org.knime.base.node.mine.regression.logistic.predictor.LogisticRegressionPredictorNodeFactory
+Math Formula,org.knime.ext.jep.JEPNodeFactory
+Missing Value,org.knime.base.node.preproc.pmml.missingval.compute.MissingValueHandlerNodeFactory
+Missing Value Apply,org.knime.base.node.preproc.pmml.missingval.apply.MissingValueApplyNodeFactory
+MLP Learner,org.knime.base.node.mine.neural.rprop.RPropNodeFactory2
+MLP Predictor,org.knime.base.node.mine.neural.mlp2.MLPPredictorNodeFactory
+Model Reader,org.knime.base.node.io.filehandling.model.reader.ModelReaderNodeFactory
+Model Writer,org.knime.base.node.io.filehandling.model.writer.ModelWriterNodeFactory
+Naive Bayes Learner,org.knime.base.node.mine.bayes.naivebayes.learner3.NaiveBayesLearnerNodeFactory4
+Naive Bayes Predictor,org.knime.base.node.mine.bayes.naivebayes.predictor4.NaiveBayesPredictorNodeFactory3
+Normalizer,org.knime.base.node.preproc.normalize3.Normalizer3NodeFactory
+Normalizer Apply,org.knime.base.node.preproc.normalize.NormalizerApplyNodeFactory
+Normalizer PMML,org.knime.base.node.preproc.pmml.normalize.NormalizerPMMLNodeFactory2
+Normalizer PMML Apply,org.knime.base.node.preproc.pmml.normalize.NormalizerPMMLApplyNodeFactory
+One-To-Many,org.knime.base.node.preproc.columntrans2.One2ManyCol2NodeFactory
+Partitioning,org.knime.base.node.preproc.partition.PartitionNodeFactory
+PMML Reader,org.knime.base.node.io.filehandling.pmml.reader.PMMLReaderNodeFactory3
+PMML Writer,org.knime.base.node.io.filehandling.pmml.writer.PMMLWriterNodeFactory2
+Random Forest Learner,org.knime.base.node.mine.treeensemble2.node.randomforest.learner.classification.RandomForestClassificationLearnerNodeFactory2
+Random Forest Predictor,org.knime.base.node.mine.treeensemble2.node.randomforest.predictor.classification.RandomForestClassificationPredictorNodeFactory2
+Reference Row Splitter,org.knime.base.node.preproc.filter.rowref.RowSplitRefNodeFactory
+ROC Curve,org.knime.base.views.node.roccurve.ROCCurveNodeFactory
+Row Aggregator,org.knime.base.node.preproc.rowagg.RowAggregatorNodeFactory
+Row Filter,org.knime.base.node.preproc.filter.row3.RowFilterNodeFactory
+Rule Engine,org.knime.base.node.rules.engine.RuleEngineNodeFactory
+Scorer,org.knime.base.node.mine.scorer.accuracy.AccuracyScorer2NodeFactory
+Smote,org.knime.base.node.mine.smote.SmoteNodeFactory
+Statistics,org.knime.base.node.stats.viz.extended.ExtendedStatisticsNodeFactory
+String Manipulatioin MC,org.knime.base.node.preproc.stringmanipulation.multicolumn.MultiColumnStringManipulationNodeFactory
+String Manipulation,org.knime.base.node.preproc.stringmanipulation.StringManipulationNodeFactory
+String To Number,org.knime.base.node.preproc.colconvert.stringtonumber2.StringToNumber2NodeFactory
+SVM Learner,org.knime.base.node.mine.svm.learner.SVMLearnerNodeFactory2
+SVM Predictor,org.knime.base.node.mine.svm.predictor2.SVMPredictorNodeFactory
+Table View,org.knime.base.views.node.tableview.TableViewNodeFactory
+Value Lookup,org.knime.base.node.preproc.valuelookup.ValueLookupNodeFactory
+X Aggregator,org.knime.base.node.meta.xvalidation.AggregateOutputNodeFactory
+X Partitioner,org.knime.base.node.meta.xvalidation.XValidatePartitionerFactory

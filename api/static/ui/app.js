@@ -10,6 +10,8 @@
     normalizeRel,
     isUnsafeRel,
     extractSettingsPathsFromWorkflowXml,
+    parseHandlersCsv,
+    findHandlerForManifestPath,
   } = window.manifestUtils || {};
   const { renderApp } = window.appView || {};
 
@@ -46,6 +48,7 @@
 
     const [requiredPaths, setRequiredPaths] = useState([]); // rel paths under workflow root
     const [manifest, setManifest] = useState(null);
+    const [handlersByNode, setHandlersByNode] = useState({});
 
     const [job, setJob] = useState(null);
     const [pollStatus, setPollStatus] = useState(null);
@@ -68,6 +71,17 @@
       }
       return { count, bytes };
     }, [rawFiles]);
+
+    const manifestWithHandlers = useMemo(() => {
+      if (!manifest) return null;
+      return {
+        ...manifest,
+        items: manifest.items.map((item) => ({
+          ...item,
+          ...findHandlerForManifestPath(item.path, handlersByNode),
+        })),
+      };
+    }, [manifest, handlersByNode]);
 
     function resetAll() {
       setStage("idle");
@@ -215,6 +229,28 @@
       setStage("manifest");
     }
 
+    useEffect(() => {
+      let stopped = false;
+
+      async function loadHandlers() {
+        try {
+          const resp = await fetch("/meta/handlers.csv");
+          if (!resp.ok) return;
+          const text = await resp.text();
+          if (!stopped) {
+            setHandlersByNode(parseHandlersCsv(text));
+          }
+        } catch (_) {
+          // Keep manifest usable even if handlers metadata is unavailable.
+        }
+      }
+
+      loadHandlers();
+      return () => {
+        stopped = true;
+      };
+    }, []);
+
     async function buildZipBlob() {
       if (!manifest) throw new Error("No manifest");
       const zip = new JSZip();
@@ -306,7 +342,7 @@
         totals,
         warnings,
         errors,
-        manifest,
+        manifest: manifestWithHandlers,
         stage,
         job,
         pollStatus,

@@ -75,6 +75,46 @@ function extractSettingsPathsFromWorkflowXml(xmlText) {
   return Array.from(out).sort();
 }
 
+function normalizeNodeLabel(label) {
+  return (label || "").trim().replace(/\s+/g, " ").toLowerCase();
+}
+
+function extractNodeNameFromManifestPath(path) {
+  const rel = normalizeRel(path);
+  if (!rel.toLowerCase().endsWith("/settings.xml")) return "";
+  const parts = rel.split("/").filter(Boolean);
+  if (parts.length < 2) return "";
+  return parts[parts.length - 2].replace(/\s*\(#\d+\)\s*$/, "").trim();
+}
+
+function parseHandlersCsv(csvText) {
+  const handlersByNode = Object.create(null);
+  for (const rawLine of (csvText || "").split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line) continue;
+    const commaIdx = line.indexOf(",");
+    if (commaIdx <= 0 || commaIdx === line.length - 1) continue;
+    const label = line.slice(0, commaIdx).trim();
+    const handlerFactory = line.slice(commaIdx + 1).trim();
+    if (!label || !handlerFactory) continue;
+    handlersByNode[normalizeNodeLabel(label)] = {
+      label,
+      handlerFactory,
+    };
+  }
+  return handlersByNode;
+}
+
+function findHandlerForManifestPath(path, handlersByNode) {
+  const nodeName = extractNodeNameFromManifestPath(path);
+  const match = handlersByNode?.[normalizeNodeLabel(nodeName)] || null;
+  return {
+    nodeName,
+    handlerLabel: match?.label || "",
+    handlerFactory: match?.handlerFactory || "",
+  };
+}
+
 const manifestUtils = {
   fmtBytes,
   firstPathSegment,
@@ -82,6 +122,10 @@ const manifestUtils = {
   normalizeRel,
   isUnsafeRel,
   extractSettingsPathsFromWorkflowXml,
+  normalizeNodeLabel,
+  extractNodeNameFromManifestPath,
+  parseHandlersCsv,
+  findHandlerForManifestPath,
 };
 
 if (typeof window !== "undefined") {

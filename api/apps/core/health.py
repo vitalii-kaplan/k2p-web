@@ -1,12 +1,11 @@
 from __future__ import annotations
 
 import tempfile
-import subprocess
 from pathlib import Path
 
 from django.conf import settings
 from django.db import connection
-from django.http import JsonResponse
+from django.http import HttpResponse, JsonResponse
 
 def healthz(_request):
     return JsonResponse({"status": "ok"})
@@ -40,3 +39,10 @@ def readyz(_request):
             ok = False
 
     return JsonResponse({"status": "ok" if ok else "fail", "checks": checks}, status=200 if ok else 503)
+
+
+def handlers_csv(_request):
+    handlers_path = Path(getattr(settings, "K2P_HANDLERS_STATIC_FILE"))
+    if not handlers_path.exists():
+        return HttpResponse("handlers.csv not found\n", status=404, content_type="text/plain; charset=utf-8")
+    return HttpResponse(handlers_path.read_text(encoding="utf-8"), content_type="text/csv; charset=utf-8")

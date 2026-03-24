@@ -1,3 +1,5 @@
+import fs from "node:fs";
+import path from "node:path";
 import { describe, it, expect } from "vitest";
 import {
   fmtBytes,
@@ -6,6 +8,9 @@ import {
   normalizeRel,
   isUnsafeRel,
   extractSettingsPathsFromWorkflowXml,
+  extractNodeNameFromManifestPath,
+  parseHandlersCsv,
+  findHandlerForManifestPath,
 } from "../../api/static/ui/manifest_utils.js";
 
 describe("manifest utils", () => {
@@ -44,5 +49,24 @@ describe("manifest utils", () => {
     expect(paths).toContain("CSV Reader (#1)/settings.xml");
     expect(paths).toContain("Line Plot (#2)/settings.xml");
     expect(paths).not.toContain("(#1)/settings.xml");
+  });
+
+  it("matches manifest node names against handlers.csv ignoring KNIME instance suffixes", () => {
+    const csvPath = path.resolve(process.cwd(), "tests/data/handlers.csv");
+    const handlersByNode = parseHandlersCsv(fs.readFileSync(csvPath, "utf-8"));
+
+    expect(extractNodeNameFromManifestPath("CSV Reader (#1)/settings.xml")).toBe("CSV Reader");
+
+    expect(findHandlerForManifestPath("CSV Reader (#1)/settings.xml", handlersByNode)).toEqual({
+      nodeName: "CSV Reader",
+      handlerLabel: "Csv Reader",
+      handlerFactory: "org.knime.base.node.io.filehandling.csv.reader.CSVTableReaderNodeFactory",
+    });
+
+    expect(findHandlerForManifestPath("Unknown Node (#1)/settings.xml", handlersByNode)).toEqual({
+      nodeName: "Unknown Node",
+      handlerLabel: "",
+      handlerFactory: "",
+    });
   });
 });

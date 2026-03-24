@@ -47,3 +47,23 @@ class CoreHealthTests(TestCase):
         with override_settings(DEBUG=False, EXPOSE_READYZ=False):
             resp = client.get("/readyz")
         self.assertEqual(resp.status_code, 404)
+
+    def test_handlers_csv_returns_generated_file(self) -> None:
+        client = Client()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            handlers_path = Path(tmpdir) / "meta" / "handlers.csv"
+            handlers_path.parent.mkdir(parents=True, exist_ok=True)
+            handlers_path.write_text("Csv Reader,org.example.CsvReader\n", encoding="utf-8")
+            with override_settings(K2P_HANDLERS_STATIC_FILE=str(handlers_path)):
+                resp = client.get("/meta/handlers.csv")
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp["Content-Type"], "text/csv; charset=utf-8")
+        self.assertEqual(resp.content.decode("utf-8"), "Csv Reader,org.example.CsvReader\n")
+
+    def test_handlers_csv_returns_404_when_missing(self) -> None:
+        client = Client()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            handlers_path = Path(tmpdir) / "meta" / "handlers.csv"
+            with override_settings(K2P_HANDLERS_STATIC_FILE=str(handlers_path)):
+                resp = client.get("/meta/handlers.csv")
+        self.assertEqual(resp.status_code, 404)

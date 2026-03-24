@@ -5,7 +5,7 @@ from django.views.generic import TemplateView
 from rest_framework.schemas import get_schema_view
 from rest_framework.permissions import AllowAny
 
-from apps.core.health import healthz, readyz
+from apps.core.health import handlers_csv, healthz, readyz
 from apps.core.admin_views import sql_console
 from django.conf import settings
 
@@ -19,6 +19,7 @@ urlpatterns = [
     path("admin/", admin.site.urls),
     path("healthz", healthz),
     path("readyz", readyz),
+    path("meta/handlers.csv", handlers_csv),
 
     # API
     path("api/", include("apps.jobs.urls")),

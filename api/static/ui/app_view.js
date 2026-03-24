@@ -92,6 +92,8 @@ const appView = {
                     <thead>
                       <tr>
                         <th>path</th>
+                        <th>node</th>
+                        <th>supported</th>
                         <th>present</th>
                         <th>size</th>
                       </tr>
@@ -101,6 +103,8 @@ const appView = {
                         (it) => html`
                           <tr>
                             <td><code>${it.path}</code></td>
+                            <td>${it.nodeName || ""}</td>
+                            <td>${it.nodeName ? (it.handlerFactory ? "yes" : "no") : ""}</td>
                             <td>${it.present ? "yes" : "missing"}</td>
                             <td>${it.present ? fmtBytes(it.size) : ""}</td>
                           </tr>
