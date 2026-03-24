@@ -20,6 +20,7 @@ class K2PStartupTests(SimpleTestCase):
     def test_check_version_and_export_handlers_writes_static_file(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             handlers_path = Path(tmpdir) / "static" / "meta" / "handlers.csv"
+            mirror_path = Path(tmpdir) / "api_static" / "meta" / "handlers.csv"
             results = [
                 CompletedProcess(args=["docker"], returncode=0, stdout="0.1.16\n", stderr=""),
                 CompletedProcess(
@@ -37,10 +38,12 @@ class K2PStartupTests(SimpleTestCase):
                         image="example/knime2py:0.1.16",
                         command=None,
                         handlers_path=handlers_path,
+                        mirror_paths=[mirror_path],
                         logger=logging.getLogger("k2p.api"),
                     )
 
             self.assertEqual(handlers_path.read_text(encoding="utf-8"), '{"handlers":[{"id":"x"}]}\n')
+            self.assertEqual(mirror_path.read_text(encoding="utf-8"), '{"handlers":[{"id":"x"}]}\n')
             self.assertEqual(run.call_count, 2)
             events = [json.loads(call.args[0])["event"] for call in logger_info.call_args_list]
             self.assertEqual(
@@ -56,6 +59,7 @@ class K2PStartupTests(SimpleTestCase):
     def test_check_version_and_export_handlers_raises_on_version_failure(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             handlers_path = Path(tmpdir) / "static" / "meta" / "handlers.csv"
+            mirror_path = Path(tmpdir) / "api_static" / "meta" / "handlers.csv"
             result = CompletedProcess(args=["docker"], returncode=7, stdout="", stderr="boom")
 
             with patch("apps.core.k2p_startup.subprocess.run", return_value=result):
@@ -65,10 +69,12 @@ class K2PStartupTests(SimpleTestCase):
                         image="example/knime2py:0.1.16",
                         command=None,
                         handlers_path=handlers_path,
+                        mirror_paths=[mirror_path],
                         logger=logging.getLogger("k2p.api"),
                     )
 
             self.assertFalse(handlers_path.exists())
+            self.assertFalse(mirror_path.exists())
 
 
 class CoreConfigReadyTests(SimpleTestCase):
@@ -92,6 +98,7 @@ class CoreConfigReadyTests(SimpleTestCase):
 
         log_db_settings.assert_called_once()
         startup_check.assert_called_once()
+        self.assertIn("mirror_paths", startup_check.call_args.kwargs)
 
     @override_settings(
         DEBUG=True,

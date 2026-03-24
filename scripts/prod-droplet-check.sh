@@ -2,6 +2,7 @@
 set -euo pipefail
 
 COMPOSE_FILE="${COMPOSE_FILE:-docker-compose.prod.nginx.yml}"
+COMPOSE_PROJECT="${COMPOSE_PROJECT:-k2pweb}"
 
 # On droplet you should test via real domain (Cloudflare)
 DOMAIN="${DOMAIN:-k2pweb.org}"
@@ -56,7 +57,7 @@ LOG_TAIL="${LOG_TAIL:-200}"
 repo_root() { git rev-parse --show-toplevel 2>/dev/null || pwd; }
 REPO_ROOT="$(repo_root)"
 
-dc() { docker compose -f "$COMPOSE_FILE" "$@"; }
+dc() { docker compose -p "$COMPOSE_PROJECT" -f "$COMPOSE_FILE" "$@"; }
 
 say() { printf '%s\n' "$*"; }
 die() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }

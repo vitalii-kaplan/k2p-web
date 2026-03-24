@@ -1,6 +1,7 @@
 # Project specific
 tests/out/*
 tests/out-k8s/*
+api/static/meta/handlers.csv
 .vscode
 .htpasswd
 certs/*

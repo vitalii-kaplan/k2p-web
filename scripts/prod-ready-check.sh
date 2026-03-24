@@ -2,6 +2,7 @@
 set -euo pipefail
 
 COMPOSE_FILE="${COMPOSE_FILE:-docker-compose.prod.nginx.yml}"
+COMPOSE_PROJECT="${COMPOSE_PROJECT:-k2pweb}"
 API_URL="${API_URL:-https://127.0.0.1}"   # hits nginx
 WIPE_VOLUMES="${WIPE_VOLUMES:-0}"
 START_WORKER="${START_WORKER:-1}"
@@ -22,7 +23,7 @@ FORCE_JOB_RUN="${FORCE_JOB_RUN:-0}"
 repo_root() { git rev-parse --show-toplevel 2>/dev/null || pwd; }
 REPO_ROOT="$(repo_root)"
 
-dc() { docker compose -f "$COMPOSE_FILE" "$@"; }
+dc() { docker compose -p "$COMPOSE_PROJECT" -f "$COMPOSE_FILE" "$@"; }
 
 say() { printf '%s\n' "$*"; }
 die() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
@@ -295,6 +296,7 @@ main() {
 
   say "Repo: $REPO_ROOT"
   say "Docker context: $(docker context show 2>/dev/null || echo unknown)"
+  say "Compose project: $COMPOSE_PROJECT"
   say "Compose file: $COMPOSE_FILE"
   say "API_URL: $API_URL"
   say "WIPE_VOLUMES=$WIPE_VOLUMES START_WORKER=$START_WORKER CHECK_READYZ=$CHECK_READYZ REQUIRE_TLS=$REQUIRE_TLS BUILD=$BUILD CURL_INSECURE=$CURL_INSECURE"
@@ -313,17 +315,11 @@ main() {
 
   say ""
   say "Step 1: Teardown"
-  # Remove named containers if left behind from non-compose runs.
-  for c in k2pweb-api k2pweb-worker k2pweb-postgres k2pweb-nginx; do
-    if docker ps -a --format '{{.Names}}' | grep -qx "$c"; then
-      docker rm -f "$c" >/dev/null 2>&1 || true
-    fi
-  done
   if [[ "$WIPE_VOLUMES" == "1" ]]; then
-    say "  Running: docker compose down -v --remove-orphans"
+    say "  Running: docker compose -p $COMPOSE_PROJECT -f $COMPOSE_FILE down -v --remove-orphans"
     dc down -v --remove-orphans
   else
-    say "  Running: docker compose down --remove-orphans"
+    say "  Running: docker compose -p $COMPOSE_PROJECT -f $COMPOSE_FILE down --remove-orphans"
     dc down --remove-orphans
   fi
 

@@ -5,6 +5,7 @@ import logging
 import shlex
 import subprocess
 from pathlib import Path
+from collections.abc import Iterable
 
 
 class K2PStartupError(RuntimeError):
@@ -34,12 +35,24 @@ def _run_k2p_cli(
     )
 
 
+def _write_handlers_files(paths: Iterable[Path], content: str) -> None:
+    seen: set[Path] = set()
+    for path in paths:
+        resolved = path.resolve()
+        if resolved in seen:
+            continue
+        seen.add(resolved)
+        resolved.parent.mkdir(parents=True, exist_ok=True)
+        resolved.write_text(content, encoding="utf-8")
+
+
 def check_version_and_export_handlers(
     *,
     docker_bin: str,
     image: str,
     command: str | None,
     handlers_path: Path,
+    mirror_paths: Iterable[Path] = (),
     logger: logging.Logger,
 ) -> None:
     logger.info(json.dumps({"event": "k2p_version_check_start", "image": image}))
@@ -77,8 +90,7 @@ def check_version_and_export_handlers(
             f"exit={handlers_result.returncode}, stderr_tail={(handlers_result.stderr or '')[-1000:]}"
         )
 
-    handlers_path.parent.mkdir(parents=True, exist_ok=True)
-    handlers_path.write_text(handlers_result.stdout or "", encoding="utf-8")
+    _write_handlers_files([handlers_path, *mirror_paths], handlers_result.stdout or "")
     logger.info(
         json.dumps(
             {

@@ -37,8 +37,9 @@ MANAGE := $(PYTHON) api/manage.py
 IMAGE ?= k2p-web:local                 # set to ghcr.io/<you>/<repo>:<tag> when you want
 ENV_FILE ?= .env
 
-API_NAME ?= k2pweb-api
-WORKER_NAME ?= k2pweb-worker
+# Use dev-specific names so local docker-run targets do not collide with prod compose services.
+API_NAME ?= k2pweb-dev-api
+WORKER_NAME ?= k2pweb-dev-worker
 PORT ?= 8000
 WORKER_METRICS_PORT ?= 8001
 DOCKER_DB_ENGINE ?= sqlite
@@ -130,7 +131,7 @@ print-handlers: ## Print generated handlers CSV
 	cat var/static/meta/handlers.csv
 
 prod-print-handlers: ## Print generated handlers CSV from prod nginx container
-	docker compose -f $(PROD_COMPOSE) exec -T nginx cat /static/meta/handlers.csv
+	$(PROD_DC) exec -T nginx cat /static/meta/handlers.csv
 
 reset-db: ## Flush DB and re-migrate
 	./scripts/reset-db.sh
@@ -221,27 +222,29 @@ docker-dev-down: docker-worker-down docker-api-down ## Stop dev containers
 # Production (droplet) via docker compose
 # -----------------------
 PROD_COMPOSE ?= docker-compose.prod.nginx.yml
+PROD_PROJECT ?= k2pweb
+PROD_DC = docker compose -p $(PROD_PROJECT) -f $(PROD_COMPOSE)
 
 prod-up: ensure-k2p-image ## Start production stack (api+nginx+postgres+worker)
-	docker compose -f $(PROD_COMPOSE) up -d --remove-orphans
+	$(PROD_DC) up -d --remove-orphans
 
 prod-down: ## Stop production stack
-	docker compose -f $(PROD_COMPOSE) down --remove-orphans
+	$(PROD_DC) down --remove-orphans
 
 prod-ps: ## Show production containers
-	docker compose -f $(PROD_COMPOSE) ps
+	$(PROD_DC) ps
 
 prod-api-logs: ## Tail API logs
-	docker compose -f $(PROD_COMPOSE) logs -f api
+	$(PROD_DC) logs -f api
 
 prod-worker-logs: ## Tail worker logs
-	docker compose -f $(PROD_COMPOSE) logs -f worker
+	$(PROD_DC) logs -f worker
 
 prod-nginx-logs: ## Tail nginx logs
-	docker compose -f $(PROD_COMPOSE) logs -f nginx
+	$(PROD_DC) logs -f nginx
 
 prod-migrate: ## Run migrations in production stack
-	docker compose -f $(PROD_COMPOSE) run --rm api python manage.py migrate
+	$(PROD_DC) run --rm api python manage.py migrate
 
 prod-check: ensure-k2p-image ## Run your production smoke-check script
 	./scripts/prod-droplet-check.sh
@@ -250,9 +253,9 @@ update-cf-ips: ## Refresh Cloudflare IP allowlist for nginx real_ip
 	./scripts/update_cloudflare_ips.sh
 
 prod-clean-restart: ensure-k2p-image ## Rebuild + migrate + collectstatic + restart production stack
-	docker compose -f $(PROD_COMPOSE) down --remove-orphans
+	$(PROD_DC) down --remove-orphans
 	./scripts/update_cloudflare_ips.sh
-	docker compose -f $(PROD_COMPOSE) build --no-cache --pull
-	docker compose -f $(PROD_COMPOSE) up -d --remove-orphans
-	docker compose -f $(PROD_COMPOSE) run --rm api python manage.py migrate
-	docker compose -f $(PROD_COMPOSE) run --rm api python manage.py collectstatic --noinput
+	$(PROD_DC) build --no-cache --pull
+	$(PROD_DC) up -d --remove-orphans
+	$(PROD_DC) run --rm api python manage.py migrate
+	$(PROD_DC) run --rm api python manage.py collectstatic --noinput
