@@ -618,10 +618,10 @@ main() {
   say ""
   say "Step 1: Teardown"
   if [[ "$WIPE_VOLUMES" == "1" ]]; then
-    say "  Running: docker compose down -v --remove-orphans"
+    say "  Running: docker compose -p $COMPOSE_PROJECT -f $COMPOSE_FILE down -v --remove-orphans"
     dc down -v --remove-orphans
   else
-    say "  Running: docker compose down --remove-orphans"
+    say "  Running: docker compose -p $COMPOSE_PROJECT -f $COMPOSE_FILE down --remove-orphans"
     dc down --remove-orphans
   fi
 
