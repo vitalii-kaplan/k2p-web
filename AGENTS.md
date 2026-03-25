@@ -2,6 +2,11 @@
 
 Project-specific guidance for coding agents working in this repository.
 
+## Source of truth
+
+- Treat the code in this repository as the source of truth.
+- External summaries, chats, or generated docs may be useful hints, but they must be verified against the current code before being relied on.
+
 ## Quick start (preferred commands)
 
 - Use Make targets instead of ad-hoc commands when possible.
@@ -30,6 +35,13 @@ Project-specific guidance for coding agents working in this repository.
   - `HOST_JOB_STORAGE_ROOT`, `HOST_RESULT_STORAGE_ROOT` should be set when running worker containers via Docker.
 - Schema convention: every table must use an auto-increment numeric primary key (e.g., `BigAutoField`), even if there is another unique identifier like a UUID.
 
+## Product flow
+
+- The main user flow is: upload a workflow ZIP, create a job, process it in the worker, then download results when ready.
+- Jobs are stored in the `Job` model with status lifecycle:
+  `QUEUED` -> `RUNNING` -> `SUCCEEDED` or `FAILED`.
+- Jobs are addressed externally by UUID, while the database primary key remains numeric.
+
 ## Metrics conventions
 
 - API (`:8000`, django-prometheus) exposes DB-snapshot gauges such as:
@@ -45,6 +57,28 @@ Project-specific guidance for coding agents working in this repository.
 - Jobs are executed via Docker (`docker run`) inside the worker process.
 - Uploaded ZIP must contain `workflow.knime` at the top level (server-side validation enforces this).
 - The worker unzips into `_work`, searches for `workflow.knime`, and passes its parent directory to the runner.
+- Runner isolation matters. Preserve security-related Docker flags unless the task explicitly requires changing them.
+
+## API and routes
+
+- UI entrypoint: `/`
+- Main API routes:
+  - `POST /api/jobs`
+  - `GET /api/jobs/<uuid>`
+  - `GET /api/jobs/<uuid>/logs`
+  - `GET /api/jobs/<uuid>/result.zip`
+- Operational routes:
+  - `/healthz`
+  - `/readyz`
+  - `/meta/handlers.csv`
+  - `/admin/`
+- `/api/schema/` is exposed only when `DEBUG` is on or `EXPOSE_SCHEMA=1`.
+
+## Deployment model
+
+- Production uses Docker Compose with separate `api`, `worker`, `postgres`, and `nginx` services.
+- Nginx serves `/static/` from the shared static volume and proxies application traffic to the API container.
+- Production stack commands must use the explicit Compose project name `k2pweb`; do not rely on the directory-derived default project name.
 
 ## Testing rules
 

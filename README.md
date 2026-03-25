@@ -8,8 +8,9 @@ Users upload a sanitized workflow bundle (`.zip` containing `workflow.knime` at 
 
 * Upload workflow bundle and create a job
 * Job status and metadata endpoint
+* Job logs endpoint
 * Result ZIP download when finished
-* Docker-backed worker loop (job per request)
+* Docker-backed worker loop
 
 ## API
 
@@ -17,12 +18,13 @@ Base path: `/api`
 
 * `POST /api/jobs` — multipart form with `bundle` (zip)
 * `GET /api/jobs/<uuid>` — job status/details
+* `GET /api/jobs/<uuid>/logs` — stored stdout/stderr tail
 * `GET /api/jobs/<uuid>/result.zip` — result archive when `status == SUCCEEDED`
 
 Health:
 
 * `GET /healthz`
-* `GET /readyz`
+* `GET /readyz` — available in debug or when explicitly enabled
 
 ## Local development
 
@@ -34,22 +36,22 @@ source .venv/bin/activate
 pip install -e .[dev]
 ```
 
-Run migrations:
+Initialize the DB:
 
 ```bash
-python api/manage.py migrate
+make migrate
 ```
 
 Start the API:
 
 ```bash
-python api/manage.py runserver
+make server
 ```
 
 Start the worker (in another terminal):
 
 ```bash
-python api/manage.py k2p_worker
+make worker
 ```
 
 Create a job and download results:
@@ -93,14 +95,31 @@ The API rejects:
 ## Tests
 
 ```bash
-python -m pytest
+make test-py
 ```
 
 UI unit tests require Node.js + npm (install via `brew install node`).
 
 ```bash
 npm install
-npm run test:ui
+make test-ui
+```
+
+Lint and format:
+
+```bash
+make lint
+make fmt
+```
+
+## Production compose
+
+Preferred commands:
+
+```bash
+make prod-up
+make prod-down
+make prod-check
 ```
 
 ## Debugging (runner)
