@@ -2,6 +2,7 @@
 set -euo pipefail
 
 COMPOSE_FILE="${COMPOSE_FILE:-docker-compose.prod.nginx.yml}"
+COMPOSE_PROJECT="${COMPOSE_PROJECT:-k2pweb}"
 
 DOMAIN="${DOMAIN:-k2pweb.org}"
 BASE_HTTP_URL="${BASE_HTTP_URL:-http://${DOMAIN}}"
@@ -28,6 +29,7 @@ PROTECTED_PATHS_ENV="${PROTECTED_PATHS:-}"
 
 repo_root() { git rev-parse --show-toplevel 2>/dev/null || pwd; }
 REPO_ROOT="$(repo_root)"
+REPO_BASENAME="$(basename "$REPO_ROOT")"
 
 resolve_compose_file() {
   if [[ -f "$COMPOSE_FILE" ]]; then
@@ -40,11 +42,25 @@ resolve_compose_file() {
 }
 COMPOSE_FILE="$(resolve_compose_file)"
 
-dc() { docker compose -f "$COMPOSE_FILE" "$@"; }
+dc() { docker compose -p "$COMPOSE_PROJECT" -f "$COMPOSE_FILE" "$@"; }
 
 say() { printf '%s\n' "$*"; }
 die() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
 need_cmd() { command -v "$1" >/dev/null 2>&1 || die "missing required command: $1"; }
+
+assert_no_conflicting_compose_project() {
+  local legacy_project="${LEGACY_COMPOSE_PROJECT:-$REPO_BASENAME}"
+  [[ -n "$legacy_project" ]] || return 0
+  [[ "$legacy_project" != "$COMPOSE_PROJECT" ]] || return 0
+
+  local current_found legacy_found
+  current_found="$(docker ps --format '{{.Names}}' | grep -c "^${COMPOSE_PROJECT}-" || true)"
+  legacy_found="$(docker ps --format '{{.Names}}' | grep -c "^${legacy_project}-" || true)"
+
+  if [[ "$current_found" -gt 0 && "$legacy_found" -gt 0 ]]; then
+    die "conflicting compose projects detected: '${COMPOSE_PROJECT}' and '${legacy_project}'. Stop the legacy stack before continuing."
+  fi
+}
 
 trim_ws() {
   local s="${1-}"
@@ -162,11 +178,13 @@ get_protected_paths() {
 main() {
   need_cmd docker
   need_cmd curl
+  assert_no_conflicting_compose_project
 
   DOMAIN="$(trim_ws "$DOMAIN")"
   BASE_HTTP_URL="$(trim_ws "$BASE_HTTP_URL")"
   BASE_HTTPS_URL="$(trim_ws "$BASE_HTTPS_URL")"
 
+  say "Compose project: $COMPOSE_PROJECT"
   say "Compose file: $COMPOSE_FILE"
   say "DOMAIN: $DOMAIN"
   say "HTTP:  $BASE_HTTP_URL"

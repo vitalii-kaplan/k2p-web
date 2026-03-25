@@ -106,6 +106,22 @@ npm run test:ui
 ## Debugging (runner)
 
 ```bash
-docker compose -f docker-compose.prod.nginx.yml exec -T worker env | grep K2P
-docker compose -f docker-compose.prod.nginx.yml exec -T worker sh -lc 'docker ps'
+docker compose -p k2pweb -f docker-compose.prod.nginx.yml exec -T worker env | grep K2P
+docker compose -p k2pweb -f docker-compose.prod.nginx.yml exec -T worker sh -lc 'docker ps'
 ```
+
+For production, always use the explicit compose project name:
+
+```bash
+docker compose -p k2pweb -f docker-compose.prod.nginx.yml ...
+```
+
+This avoids accidentally creating a second stack from the repository directory name, such as `k2p-web-*` alongside `k2pweb-*`.
+
+## Naming Convention
+
+- Use `k2pweb` for machine identifiers:
+  Docker Compose project names, Django package names, database/service identifiers, and similar internal/runtime names.
+- Use `k2p-web` for human-facing branding:
+  repository title, UI text, page titles, and similar product-label usage.
+- Do not mix these forms in deployment commands. Using `k2p-web` as a compose project name can create a second stack alongside the intended `k2pweb` stack.

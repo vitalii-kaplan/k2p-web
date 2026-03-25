@@ -36,6 +36,8 @@ class CoreConfig(AppConfig):
                 yield candidate
 
     def ready(self) -> None:
+        from . import auth_logging  # noqa: F401
+
         if "k2p_worker" in sys.argv:
             return
         if len(sys.argv) > 1 and sys.argv[1] in SERVER_INIT_EXCLUDED_COMMANDS:

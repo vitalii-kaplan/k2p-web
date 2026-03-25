@@ -64,3 +64,11 @@ Project-specific guidance for coding agents working in this repository.
 - Keep edits minimal and focused on the requested task.
 - Do not revert unrelated local changes.
 - If unexpected modifications appear that you did not make, stop and ask the user before continuing.
+
+## Naming conventions
+
+- Use `k2pweb` for machine identifiers:
+  compose project names, Django module/package names, database names, and similar runtime/internal IDs.
+- Use `k2p-web` for human-facing branding:
+  README text, UI copy, site titles, and similar product-label usage.
+- Do not change between these forms casually. Mixing them in runtime identifiers can create parallel Docker Compose stacks such as `k2pweb-*` and `k2p-web-*`.

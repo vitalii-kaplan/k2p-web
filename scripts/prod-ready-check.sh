@@ -22,6 +22,7 @@ FORCE_JOB_RUN="${FORCE_JOB_RUN:-0}"
 
 repo_root() { git rev-parse --show-toplevel 2>/dev/null || pwd; }
 REPO_ROOT="$(repo_root)"
+REPO_BASENAME="$(basename "$REPO_ROOT")"
 
 dc() { docker compose -p "$COMPOSE_PROJECT" -f "$COMPOSE_FILE" "$@"; }
 
@@ -31,6 +32,20 @@ die() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
 need_cmd() { command -v "$1" >/dev/null 2>&1 || die "missing required command: $1"; }
 
 mask_secret() { [[ -n "${1:-}" ]] && echo "set" || echo "unset"; }
+
+assert_no_conflicting_compose_project() {
+  local legacy_project="${LEGACY_COMPOSE_PROJECT:-$REPO_BASENAME}"
+  [[ -n "$legacy_project" ]] || return 0
+  [[ "$legacy_project" != "$COMPOSE_PROJECT" ]] || return 0
+
+  local current_found legacy_found
+  current_found="$(docker ps --format '{{.Names}}' | grep -c "^${COMPOSE_PROJECT}-" || true)"
+  legacy_found="$(docker ps --format '{{.Names}}' | grep -c "^${legacy_project}-" || true)"
+
+  if [[ "$current_found" -gt 0 && "$legacy_found" -gt 0 ]]; then
+    die "conflicting compose projects detected: '${COMPOSE_PROJECT}' and '${legacy_project}'. Stop the legacy stack before continuing."
+  fi
+}
 
 trim_ws() {
   # trim leading/trailing whitespace and strip CR
@@ -291,6 +306,7 @@ main() {
   need_cmd docker
   need_cmd git
   need_cmd curl
+  assert_no_conflicting_compose_project
 
   API_URL="$(trim_ws "$API_URL")"
 
