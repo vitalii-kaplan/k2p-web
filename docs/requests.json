@@ -1,0 +1,10 @@
+[
+  {
+    "description": "Count job settings metadata rows grouped by node name, sorted from most common to least common.",
+    "request": "select name, count(name) as count from jobs_jobsettingsmeta group by name order by count desc;"
+  },
+  {
+    "description": "Count job settings metadata rows grouped by factory, sorted from most common to least common.",
+    "request": "select factory, count(*) as factory_count from jobs_jobsettingsmeta group by factory order by factory_count desc;"
+  }
+]
