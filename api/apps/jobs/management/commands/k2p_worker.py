@@ -149,17 +149,27 @@ class Command(BaseCommand):
         if job.created_at and job.started_at:
             JOB_QUEUE_WAIT_SECONDS.observe((job.started_at - job.created_at).total_seconds())
 
+        if not job.input_key:
+            Job.objects.filter(id=job.id).update(
+                status=Job.Status.FAILED,
+                finished_at=timezone.now(),
+                error_code="input_key_missing",
+                error_message="job input_key is empty",
+            )
+            return
+
         # input_key is e.g. jobs/<uuid>/<stem>.zip stored under JOB_STORAGE_ROOT
         in_host = Path(settings.JOB_STORAGE_ROOT) / job.input_key
         out_dir = Path(settings.RESULT_STORAGE_ROOT) / f"jobs/{job.uuid}"
         out_dir.mkdir(parents=True, exist_ok=True)
 
-        if not in_host.exists():
+        if not in_host.is_file():
+            error_code = "input_missing" if not in_host.exists() else "input_not_file"
             Job.objects.filter(id=job.id).update(
                 status=Job.Status.FAILED,
                 finished_at=timezone.now(),
-                error_code="input_missing",
-                error_message=f"input file not found: {in_host}",
+                error_code=error_code,
+                error_message=f"input file not found or not a file: {in_host}",
             )
             return
 
@@ -190,6 +200,14 @@ class Command(BaseCommand):
                 finished_at=timezone.now(),
                 error_code=exc.code,
                 error_message=exc.message,
+            )
+            return
+        except OSError as exc:
+            Job.objects.filter(id=job.id).update(
+                status=Job.Status.FAILED,
+                finished_at=timezone.now(),
+                error_code="input_unreadable",
+                error_message=f"input file could not be read: {exc}",
             )
             return
 

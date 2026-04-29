@@ -46,7 +46,7 @@ class JobCreateSerializer(serializers.Serializer):
     def create(self, validated_data: dict) -> Job:
         f = validated_data["bundle"]
 
-        job = Job.objects.create(
+        job = Job(
             status=Job.Status.QUEUED,
             original_filename=getattr(f, "name", "")[:255],
             input_size=getattr(f, "size", 0) or 0,
@@ -56,7 +56,7 @@ class JobCreateSerializer(serializers.Serializer):
             job.status = Job.Status.FAILED
             job.error_code = "upload_too_large"
             job.error_message = f"Upload too large (max {max_upload} bytes)."
-            job.save(update_fields=["status", "error_code", "error_message"])
+            job.save()
             raise serializers.ValidationError(job.error_message, code="too_large")
 
         try:
@@ -84,13 +84,13 @@ class JobCreateSerializer(serializers.Serializer):
             job.status = Job.Status.FAILED
             job.error_code = exc.code
             job.error_message = exc.message
-            job.save(update_fields=["status", "error_code", "error_message"])
+            job.save()
             raise serializers.ValidationError(exc.message, code=exc.code) from exc
         except zipfile.BadZipFile as exc:
             job.status = Job.Status.FAILED
             job.error_code = "invalid_zip"
             job.error_message = "Uploaded file is not a valid ZIP archive."
-            job.save(update_fields=["status", "error_code", "error_message"])
+            job.save()
             raise serializers.ValidationError(job.error_message) from exc
         finally:
             try:
@@ -154,7 +154,7 @@ class JobCreateSerializer(serializers.Serializer):
             else:
                 job.error_code = "invalid_xml"
                 job.error_message = str(exc)
-            job.save(update_fields=["status", "error_code", "error_message"])
+            job.save()
             if isinstance(exc, zipfile.BadZipFile):
                 raise serializers.ValidationError(job.error_message) from exc
             if isinstance(exc, ZipValidationError):
@@ -196,7 +196,7 @@ class JobCreateSerializer(serializers.Serializer):
 
         job.input_key = rel_key  # storage key; not an absolute path
         job.input_sha256 = hasher.hexdigest()
-        job.save(update_fields=["input_key", "input_sha256"])
+        job.save()
 
         JOB_CREATED_TOTAL.inc()
         logger.info(

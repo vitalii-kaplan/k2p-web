@@ -153,6 +153,7 @@ venv/
 ENV/
 env.bak/
 venv.bak/
+docs/Security.md
 
 # Spyder project settings
 .spyderproject

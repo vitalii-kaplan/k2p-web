@@ -10,7 +10,7 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase, override_settings
 from rest_framework import serializers
 
-from apps.jobs.models import JobSettingsMeta
+from apps.jobs.models import Job, JobSettingsMeta
 from apps.jobs.serializers import JobCreateSerializer
 
 
@@ -71,6 +71,28 @@ class JobCreateSerializerTests(TestCase):
         logger.info.assert_called()
         payload = logger.info.call_args[0][0]
         self.assertIn('"event": "job_created"', payload)
+
+    def test_create_does_not_save_queued_job_before_input_key(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            file_data = self._make_zip({"workflow.knime": "<root></root>"})
+            upload = SimpleUploadedFile("ready.zip", file_data, content_type="application/zip")
+
+            ser = JobCreateSerializer(data={"bundle": upload})
+            self.assertTrue(ser.is_valid(), ser.errors)
+
+            original_save = Job.save
+
+            def assert_queued_jobs_have_input_key(instance, *args, **kwargs):
+                if instance.status == Job.Status.QUEUED:
+                    self.assertTrue(instance.input_key)
+                return original_save(instance, *args, **kwargs)
+
+            with override_settings(JOB_STORAGE_ROOT=tmpdir):
+                with patch.object(Job, "save", autospec=True, side_effect=assert_queued_jobs_have_input_key):
+                    job = ser.save()
+
+        self.assertEqual(job.status, Job.Status.QUEUED)
+        self.assertTrue(job.input_key.endswith("/ready.zip"))
 
     def test_settings_meta_parsed_from_fixture(self) -> None:
         xml_text = (Path(__file__).resolve().parents[0] / "data" / "settings_meta" / "settings.xml").read_text(

@@ -45,6 +45,11 @@ class JobsViewsTests(TestCase):
         self.assertEqual(detail.data["id"], job_id)
         self.assertEqual(detail.data["status"], Job.Status.QUEUED)
 
+        job = Job.objects.get(uuid=job_id)
+        self.assertEqual(job.status, Job.Status.QUEUED)
+        self.assertTrue(job.input_key)
+        self.assertTrue(job.input_key.endswith("/discounts.zip"))
+
     def test_create_rejects_when_queue_full(self) -> None:
         Job.objects.create(status=Job.Status.QUEUED)
         with tempfile.TemporaryDirectory() as tmpdir:

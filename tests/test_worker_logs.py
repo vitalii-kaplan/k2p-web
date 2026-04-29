@@ -16,7 +16,7 @@ from apps.jobs.security import ZipValidationError
 
 class WorkerLogsTests(TestCase):
     def test_job_picked_and_finished_logged(self) -> None:
-        job = Job.objects.create(status=Job.Status.QUEUED, input_key="jobs/x/test.zip")
+        Job.objects.create(status=Job.Status.QUEUED, input_key="jobs/x/test.zip")
         cmd = Command()
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -37,7 +37,7 @@ class WorkerLogsTests(TestCase):
         self.assertIn("job_finished", events)
 
     def test_job_failed_logged(self) -> None:
-        job = Job.objects.create(status=Job.Status.QUEUED, input_key="jobs/y/test.zip")
+        Job.objects.create(status=Job.Status.QUEUED, input_key="jobs/y/test.zip")
         cmd = Command()
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -93,3 +93,32 @@ class WorkerLogsTests(TestCase):
         job.refresh_from_db()
         self.assertEqual(job.status, Job.Status.FAILED)
         self.assertEqual(job.error_code, "zip_bomb")
+
+    def test_empty_input_key_marks_failed_without_runner(self) -> None:
+        job = Job.objects.create(status=Job.Status.QUEUED, input_key="")
+        cmd = Command()
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with override_settings(JOB_STORAGE_ROOT=tmpdir, RESULT_STORAGE_ROOT=tmpdir):
+                with patch("apps.jobs.management.commands.k2p_worker.DockerRunner.run_job") as run_job:
+                    cmd._run_one(runner=cmd._build_runner())
+
+        job.refresh_from_db()
+        self.assertEqual(job.status, Job.Status.FAILED)
+        self.assertEqual(job.error_code, "input_key_missing")
+        run_job.assert_not_called()
+
+    def test_directory_input_path_marks_failed_without_runner(self) -> None:
+        job = Job.objects.create(status=Job.Status.QUEUED, input_key="jobs/a")
+        cmd = Command()
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            (Path(tmpdir) / "jobs" / "a").mkdir(parents=True)
+            with override_settings(JOB_STORAGE_ROOT=tmpdir, RESULT_STORAGE_ROOT=tmpdir):
+                with patch("apps.jobs.management.commands.k2p_worker.DockerRunner.run_job") as run_job:
+                    cmd._run_one(runner=cmd._build_runner())
+
+        job.refresh_from_db()
+        self.assertEqual(job.status, Job.Status.FAILED)
+        self.assertEqual(job.error_code, "input_not_file")
+        run_job.assert_not_called()
