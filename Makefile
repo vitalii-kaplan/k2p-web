@@ -141,7 +141,7 @@ venv: ## Print activate command
 
 tag-release: ## Tag release and push (requires VERSION=vX.Y.Z)
 	@if [ -z "$(VERSION)" ]; then echo "VERSION is required (e.g., VERSION=v0.1.1)"; exit 1; fi
-	git tag -a $(VERSION) -m "Release $(VERSION)"
+	git tag -a $(VERSION) -m "$(or $(MESSAGE),Release $(VERSION))"
 	git push origin $(VERSION)
 
 # -----------------------
