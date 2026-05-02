@@ -234,7 +234,7 @@
 
       async function loadHandlers() {
         try {
-          const resp = await fetch("/meta/handlers.csv");
+          const resp = await fetch(`/static/meta/handlers.csv?v=${Date.now()}`);
           if (!resp.ok) return;
           const text = await resp.text();
           if (!stopped) {

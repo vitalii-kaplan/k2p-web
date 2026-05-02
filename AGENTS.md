@@ -70,7 +70,7 @@ Project-specific guidance for coding agents working in this repository.
 - Operational routes:
   - `/healthz`
   - `/readyz`
-  - `/meta/handlers.csv`
+  - `/static/meta/handlers.csv`
   - `/admin/`
 - `/api/schema/` is exposed only when `DEBUG` is on or `EXPOSE_SCHEMA=1`.
 
