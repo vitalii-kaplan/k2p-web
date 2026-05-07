@@ -13,12 +13,12 @@
         print-handlers prod-print-handlers \
         docker-build docker-pull docker-ps \
         docker-api-up docker-api-down docker-api-logs docker-api-shell \
-        docker-migrate ensure-k2p-image \
+        docker-migrate prod-env-warning ensure-k2p-image ensure-k2pweb-image \
         docker-worker-up docker-worker-down docker-worker-logs docker-worker-shell \
         docker-dev-up docker-dev-down require-k2p-image venv tag-release \
         prod-up prod-down prod-ps prod-api-logs prod-worker-logs prod-nginx-logs prod-migrate prod-check \
         update-cf-ips \
-        prod-clean-restart
+        prod-clean-restart prod-update-k2p prod-update-web
 
 # Load .env into Make variables (and export them to subcommands), if present.
 ifneq (,$(wildcard .env))
@@ -36,6 +36,11 @@ MANAGE := $(PYTHON) api/manage.py
 # ---- Docker / "simulate prod" knobs ----
 IMAGE ?= k2p-web:local                 # set to ghcr.io/<you>/<repo>:<tag> when you want
 ENV_FILE ?= .env
+K2P_IMAGE ?= ghcr.io/vitalii-kaplan/knime2py:main
+K2PWEB_IMAGE ?= k2p-web:local
+ifneq ($(K2PWEB_IMAGE),k2p-web:local)
+PROD_UP_FLAGS := --no-build
+endif
 
 # Use dev-specific names so local docker-run targets do not collide with prod compose services.
 API_NAME ?= k2pweb-dev-api
@@ -48,21 +53,29 @@ DOCKER_DB_ENGINE ?= sqlite
 REPO_MOUNT ?= /repo
 
 DOCKER_TARGETS := docker-build docker-pull docker-ps docker-migrate docker-api-up docker-api-down docker-api-logs docker-api-shell docker-worker-up docker-worker-down docker-worker-logs docker-worker-shell docker-dev-up docker-dev-down
-PROD_TARGETS := prod-up prod-down prod-ps prod-api-logs prod-worker-logs prod-nginx-logs prod-migrate prod-check prod-clean-restart
+PROD_TARGETS := prod-up prod-down prod-ps prod-api-logs prod-worker-logs prod-nginx-logs prod-migrate prod-check prod-clean-restart prod-update-k2p prod-update-web
 
-$(DOCKER_TARGETS) $(PROD_TARGETS): require-k2p-image
+$(DOCKER_TARGETS): require-k2p-image
+$(PROD_TARGETS): prod-env-warning
+
+prod-env-warning:
+	@if [ ! -f "$(ENV_FILE)" ]; then \
+		echo "======================================================================"; \
+		echo "BIG WARNING: $(ENV_FILE) is not present."; \
+		echo "Production commands will use local app image/build: $(K2PWEB_IMAGE)."; \
+		echo "Create $(ENV_FILE) with K2PWEB_IMAGE=<repo>:<version> to deploy a published k2p-web image."; \
+		echo "======================================================================"; \
+	fi
 
 require-k2p-image:
 	@if [ ! -f "$(ENV_FILE)" ]; then \
-		echo "ERROR: $(ENV_FILE) not found. Create it and set K2P_IMAGE=<repo>:<version>."; \
-		exit 1; \
+		echo "WARNING: $(ENV_FILE) not found. Using default K2P_IMAGE=$(K2P_IMAGE)."; \
 	fi
-	@K2P_IMAGE_VALUE="$$(awk -F= '/^[[:space:]]*K2P_IMAGE[[:space:]]*=/{print $$2}' "$(ENV_FILE)" | tail -n1 | xargs)"; \
+	@K2P_IMAGE_VALUE="$$(if [ -f "$(ENV_FILE)" ]; then awk -F= '/^[[:space:]]*K2P_IMAGE[[:space:]]*=/{print $$2}' "$(ENV_FILE)" | tail -n1 | xargs; fi)"; \
 	K2P_IMAGE_VALUE="$${K2P_IMAGE_VALUE%\"}"; K2P_IMAGE_VALUE="$${K2P_IMAGE_VALUE#\"}"; \
 	K2P_IMAGE_VALUE="$${K2P_IMAGE_VALUE%\'}"; K2P_IMAGE_VALUE="$${K2P_IMAGE_VALUE#\'}"; \
 	if [ -z "$$K2P_IMAGE_VALUE" ]; then \
-		echo "ERROR: K2P_IMAGE is missing in $(ENV_FILE). Set K2P_IMAGE=<repo>:<version>."; \
-		exit 1; \
+		K2P_IMAGE_VALUE="$(K2P_IMAGE)"; \
 	fi; \
 	case "$$K2P_IMAGE_VALUE" in \
 		*@sha256:*) ;; \
@@ -76,6 +89,27 @@ ensure-k2p-image: require-k2p-image
 		echo "K2P image not found locally. Pulling $(K2P_IMAGE) ..."; \
 		docker pull "$(K2P_IMAGE)" || { echo "ERROR: failed to pull $(K2P_IMAGE)"; exit 1; }; \
 	fi
+
+ensure-k2pweb-image:
+	@if [ ! -f "$(ENV_FILE)" ]; then \
+		echo "WARNING: $(ENV_FILE) not found. Using local app image/build: $(K2PWEB_IMAGE)."; \
+		exit 0; \
+	fi
+	@K2PWEB_IMAGE_VALUE="$$(awk -F= '/^[[:space:]]*K2PWEB_IMAGE[[:space:]]*=/{print $$2}' "$(ENV_FILE)" | tail -n1 | xargs)"; \
+	K2PWEB_IMAGE_VALUE="$${K2PWEB_IMAGE_VALUE%\"}"; K2PWEB_IMAGE_VALUE="$${K2PWEB_IMAGE_VALUE#\"}"; \
+	K2PWEB_IMAGE_VALUE="$${K2PWEB_IMAGE_VALUE%\'}"; K2PWEB_IMAGE_VALUE="$${K2PWEB_IMAGE_VALUE#\'}"; \
+	if [ -z "$$K2PWEB_IMAGE_VALUE" ]; then \
+		echo "K2PWEB_IMAGE is not set in $(ENV_FILE). Using local app image/build: $(K2PWEB_IMAGE)."; \
+		exit 0; \
+	fi; \
+	case "$$K2PWEB_IMAGE_VALUE" in \
+		*@sha256:*) ;; \
+		*:) echo "ERROR: K2PWEB_IMAGE has no version tag: $$K2PWEB_IMAGE_VALUE"; exit 1 ;; \
+		*:* ) ;; \
+		*) echo "ERROR: K2PWEB_IMAGE must include a version tag (or digest): $$K2PWEB_IMAGE_VALUE"; exit 1 ;; \
+	esac; \
+	echo "Pulling K2PWEB image $$K2PWEB_IMAGE_VALUE ..."; \
+	docker pull "$$K2PWEB_IMAGE_VALUE"
 
 help: ## Show this help
 	@awk 'BEGIN {FS = ":.*## "}; /^[A-Za-z0-9][^:]*:.*## / {printf "  %-20s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -225,8 +259,8 @@ PROD_COMPOSE ?= docker-compose.prod.nginx.yml
 PROD_PROJECT ?= k2pweb
 PROD_DC = docker compose -p $(PROD_PROJECT) -f $(PROD_COMPOSE)
 
-prod-up: ensure-k2p-image ## Start production stack (api+nginx+postgres+worker)
-	$(PROD_DC) up -d --remove-orphans
+prod-up: ensure-k2p-image ensure-k2pweb-image ## Start production stack (api+nginx+postgres+worker)
+	$(PROD_DC) up -d $(PROD_UP_FLAGS) --remove-orphans
 
 prod-down: ## Stop production stack
 	$(PROD_DC) down --remove-orphans
@@ -243,19 +277,32 @@ prod-worker-logs: ## Tail worker logs
 prod-nginx-logs: ## Tail nginx logs
 	$(PROD_DC) logs -f nginx
 
-prod-migrate: ## Run migrations in production stack
+prod-migrate: ensure-k2pweb-image ## Run migrations in production stack
 	$(PROD_DC) run --rm api python manage.py migrate
 
-prod-check: ensure-k2p-image ## Run your production smoke-check script
+prod-check: ensure-k2p-image ensure-k2pweb-image ## Run your production smoke-check script
 	./scripts/prod-droplet-check.sh
 
 update-cf-ips: ## Refresh Cloudflare IP allowlist for nginx real_ip
 	./scripts/update_cloudflare_ips.sh
 
-prod-clean-restart: ensure-k2p-image ## Rebuild + migrate + collectstatic + restart production stack
+prod-update-k2p: ## Pull K2P_IMAGE and restart api+worker so handlers.csv is regenerated
+	docker pull "$(K2P_IMAGE)"
+	$(PROD_DC) up -d $(PROD_UP_FLAGS) --force-recreate api worker
+
+prod-update-web: ensure-k2pweb-image ## Pull K2PWEB_IMAGE, migrate, collectstatic, and restart app services
+	$(PROD_DC) up -d postgres
+	$(PROD_DC) run --rm api python manage.py migrate
+	$(PROD_DC) --profile ops run --rm collectstatic
+	$(PROD_DC) up -d $(PROD_UP_FLAGS) --force-recreate api worker
+
+prod-clean-restart: ensure-k2p-image ensure-k2pweb-image ## Rebuild + migrate + collectstatic + restart production stack
 	$(PROD_DC) down --remove-orphans
 	./scripts/update_cloudflare_ips.sh
-	$(PROD_DC) build --no-cache --pull
-	$(PROD_DC) up -d --remove-orphans
+	docker pull "$(K2P_IMAGE)"
+	@if [ "$(K2PWEB_IMAGE)" = "k2p-web:local" ]; then \
+		$(PROD_DC) build --no-cache --pull; \
+	fi
+	$(PROD_DC) up -d $(PROD_UP_FLAGS) --remove-orphans
 	$(PROD_DC) run --rm api python manage.py migrate
 	$(PROD_DC) run --rm api python manage.py collectstatic --noinput

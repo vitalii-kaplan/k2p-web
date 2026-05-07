@@ -15,6 +15,7 @@ services:
       retries: 20
 
   api:
+    image: ${K2PWEB_IMAGE:-k2p-web:local}
     build: .
     restart: unless-stopped
     working_dir: /app/api
@@ -61,6 +62,7 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
 
   worker:
+    image: ${K2PWEB_IMAGE:-k2p-web:local}
     build: .
     restart: unless-stopped
     working_dir: /app/api
@@ -94,6 +96,7 @@ services:
 
   # One-off helper: run static collection into the shared volume
   collectstatic:
+    image: ${K2PWEB_IMAGE:-k2p-web:local}
     build: .
     working_dir: /app/api
     env_file:
