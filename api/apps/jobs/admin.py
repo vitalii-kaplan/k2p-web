@@ -12,7 +12,7 @@ class JobAdmin(admin.ModelAdmin):
 
 @admin.register(JobSettingsMeta)
 class JobSettingsMetaAdmin(admin.ModelAdmin):
-    list_display = ("id", "job_status", "file_name", "factory", "node_name", "name", "created_at")
+    list_display = ("id", "created_at", "job_status", "file_name", "factory", "node_name", "name")
     list_filter = ("created_at",)
     search_fields = ("file_name", "factory", "node_name", "name", "job_status")
 
