@@ -75,6 +75,26 @@ class WorkerLogsTests(TestCase):
         self.assertEqual(job.status, Job.Status.FAILED)
         self.assertIn("timeout", job.error_message)
 
+    def test_worker_passes_original_filename_stem_to_runner(self) -> None:
+        Job.objects.create(
+            status=Job.Status.QUEUED,
+            input_key="jobs/original/sanitized.zip",
+            original_filename="Sales Forecast.zip",
+        )
+        cmd = Command()
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            job_root = Path(tmpdir) / "jobs" / "original"
+            job_root.mkdir(parents=True, exist_ok=True)
+            with zipfile.ZipFile(job_root / "sanitized.zip", "w") as zf:
+                zf.writestr("workflow.knime", "<root></root>")
+
+            with override_settings(JOB_STORAGE_ROOT=tmpdir, RESULT_STORAGE_ROOT=tmpdir):
+                with patch("apps.jobs.management.commands.k2p_worker.DockerRunner.run_job", return_value={"exit_code": 0}) as run_job:
+                    cmd._run_one(runner=cmd._build_runner())
+
+        self.assertEqual(run_job.call_args.kwargs["workflow_name"], "Sales Forecast")
+
     def test_zip_validation_error_marks_failed(self) -> None:
         job = Job.objects.create(status=Job.Status.QUEUED, input_key="jobs/a/test.zip")
         cmd = Command()

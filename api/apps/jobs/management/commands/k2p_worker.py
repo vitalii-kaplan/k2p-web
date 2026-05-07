@@ -225,7 +225,8 @@ class Command(BaseCommand):
         error_message = ""
 
         try:
-            result = runner.run_job(str(job.uuid), workflow_dir, out_dir)
+            workflow_name = Path(job.original_filename or job.input_key).stem or "workflow"
+            result = runner.run_job(str(job.uuid), workflow_dir, out_dir, workflow_name=workflow_name)
             exit_code = result.get("exit_code")
             stdout_tail = result.get("stdout_tail", "") or ""
             stderr_tail = result.get("stderr_tail", "") or ""

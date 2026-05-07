@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import shlex
 import subprocess
 from pathlib import Path
@@ -36,6 +37,14 @@ def _tail_file(path: Path, *, max_lines: int = 40, max_bytes: int = 4000) -> str
 
 def build_k2p_args(input_path: str = "/work/input", out_dir: str = "/work/out") -> list[str]:
     return [input_path, "--out", out_dir]
+
+
+def safe_container_path_stem(name: str) -> str:
+    basename = Path(name).name
+    stem = "" if basename.startswith(".") else Path(basename).stem
+    stem = stem or "workflow"
+    stem = re.sub(r"[^\w.-]+", "_", stem).strip("._-")
+    return stem or "workflow"
 
 
 class DockerRunner:
@@ -124,13 +133,20 @@ class DockerRunner:
             return shlex.split(self.command)
         return ["k2p"]
 
-    def _build_args(self) -> list[str]:
+    def _build_args(self, *, input_path: str = "/work/input", out_dir: str = "/work/out") -> list[str]:
         if self.args_template:
-            rendered = self.args_template.format(input="/work/input", output="/work/out")
+            rendered = self.args_template.format(input=input_path, output=out_dir)
             return shlex.split(rendered)
-        return build_k2p_args()
+        return build_k2p_args(input_path=input_path, out_dir=out_dir)
 
-    def run_job(self, job_id: str, workflow_path: Path, out_dir: Path) -> dict[str, Any]:
+    def run_job(
+        self,
+        job_id: str,
+        workflow_path: Path,
+        out_dir: Path,
+        *,
+        workflow_name: str = "workflow",
+    ) -> dict[str, Any]:
         name = f"k2pweb-job-{job_id}"
         out_dir.mkdir(parents=True, exist_ok=True)
         out_dir.chmod(0o777)
@@ -158,10 +174,8 @@ class DockerRunner:
                 stdout_tail="",
                 stderr_tail="",
             )
-        if host_in.is_dir():
-            mount_target = "/work/input"
-        else:
-            mount_target = "/work/input"
+        input_path = f"/work/{safe_container_path_stem(workflow_name)}"
+        mount_target = input_path
 
         self._ensure_image()
 
@@ -218,7 +232,7 @@ class DockerRunner:
                 )
 
         try:
-            args = self._build_args()
+            args = self._build_args(input_path=input_path, out_dir="/work/out")
             p = run_once(args, append=False)
         except subprocess.TimeoutExpired:
             subprocess.run([self.docker_bin, "rm", "-f", name], check=False, capture_output=True, text=True)
