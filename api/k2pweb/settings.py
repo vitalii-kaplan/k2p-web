@@ -315,3 +315,10 @@ CSRF_COOKIE_SECURE = env_bool("CSRF_COOKIE_SECURE", False)
 
 if env_bool("USE_X_FORWARDED_PROTO", False):
     SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+
+# RFC 9116 security.txt. Set SECURITY_TXT_CONTACTS to one or more comma-separated
+# contact URIs, for example: mailto:security@example.com,https://example.com/security
+SECURITY_TXT_CONTACTS = env_list("SECURITY_TXT_CONTACTS", ["mailto:security@k2pweb.org"])
+SECURITY_TXT_EXPIRES_DAYS = env_int("SECURITY_TXT_EXPIRES_DAYS", 365)
+SECURITY_TXT_CANONICAL = env_str("SECURITY_TXT_CANONICAL", "https://k2pweb.org/.well-known/security.txt")
+SECURITY_TXT_PREFERRED_LANGUAGES = env_str("SECURITY_TXT_PREFERRED_LANGUAGES", "en")

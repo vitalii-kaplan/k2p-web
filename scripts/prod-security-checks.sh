@@ -165,6 +165,21 @@ assert_https_protected_for_path() {
   say "  HTTPS $path : $code OK (auth required)"
 }
 
+assert_https_public_status_for_path() {
+  local path="$1" expected="$2"
+  local url="${BASE_HTTPS_URL}${path}"
+  local code
+
+  code="$(http_status "$url")"
+  if [[ "$code" != "$expected" ]]; then
+    say "  HTTPS $path : $code (expected $expected)"
+    http_headers "$url" | sed -n '1,40p' || true
+    nginx_logs_tail
+    die "public metadata path returned unexpected status: $path"
+  fi
+  say "  HTTPS $path : $code OK"
+}
+
 get_protected_paths() {
   if [[ -n "${PROTECTED_PATHS_ENV:-}" ]]; then
     # shellcheck disable=SC2206
@@ -196,6 +211,12 @@ main() {
   say "Check: HTTPS /healthz is 200"
   wait_status_in "${BASE_HTTPS_URL}/healthz" "200" || die "HTTPS /healthz did not become 200"
   say "  HTTPS /healthz : 200 OK"
+  say ""
+
+  say "Check: public metadata files are exposed at root paths"
+  assert_https_public_status_for_path "/.well-known/security.txt" "200"
+  assert_https_public_status_for_path "/robots.txt" "200"
+  assert_https_public_status_for_path "/sitemap.xml" "200"
   say ""
 
   mapfile -t PROTECTED_PATHS < <(get_protected_paths)

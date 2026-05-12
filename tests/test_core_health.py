@@ -52,3 +52,42 @@ class CoreHealthTests(TestCase):
         client = Client()
         resp = client.get("/meta/handlers.csv")
         self.assertEqual(resp.status_code, 404)
+
+
+class PublicMetadataTests(TestCase):
+    def test_security_txt_is_served_at_well_known_path(self) -> None:
+        client = Client()
+        with override_settings(
+            SECURITY_TXT_CONTACTS=["mailto:vulnerability@example.com"],
+            SECURITY_TXT_CANONICAL="https://k2pweb.org/.well-known/security.txt",
+            SECURITY_TXT_PREFERRED_LANGUAGES="en",
+        ):
+            resp = client.get("/.well-known/security.txt")
+
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.headers["Content-Type"], "text/plain; charset=utf-8")
+        body = resp.content.decode()
+        self.assertIn("Contact: mailto:vulnerability@example.com\n", body)
+        self.assertIn("Canonical: https://k2pweb.org/.well-known/security.txt\n", body)
+        self.assertIn("Preferred-Languages: en\n", body)
+        self.assertIn("Expires: ", body)
+
+    def test_robots_txt_blocks_ai_crawlers_and_protects_private_paths(self) -> None:
+        client = Client()
+        resp = client.get("/robots.txt")
+
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.headers["Content-Type"], "text/plain; charset=utf-8")
+        body = resp.content.decode()
+        self.assertIn("User-agent: GPTBot\nDisallow: /\n", body)
+        self.assertIn("User-agent: Google-Extended\nDisallow: /\n", body)
+        self.assertIn("Disallow: /admin/\n", body)
+        self.assertIn("Disallow: /api/\n", body)
+
+    def test_sitemap_xml_is_served_at_root(self) -> None:
+        client = Client()
+        resp = client.get("/sitemap.xml")
+
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.headers["Content-Type"], "application/xml; charset=utf-8")
+        self.assertIn("<loc>https://k2pweb.org/</loc>", resp.content.decode())
