@@ -1,20 +1,32 @@
+Cell Splitter,org.knime.base.node.preproc.cellsplit2.CellSplitter2NodeFactory
 Color Manager,org.knime.base.node.viz.property.color.ColorManager2NodeFactory
 Column Appender,org.knime.base.node.preproc.columnappend2.ColumnAppender2NodeFactory
+Column Combiner,org.knime.base.node.preproc.colcombine2.ColCombine2NodeFactory
 Column Filter,org.knime.base.node.preproc.filter.column.DataColumnSpecFilterNodeFactory
 Column Renamer,org.knime.base.node.preproc.column.renamer.ColumnRenamerNodeFactory
+Column Resorter,org.knime.base.node.preproc.columnresorter.ColumnResorterNodeFactory
 Concatenate,org.knime.base.node.preproc.append.row.AppendedRowsNodeFactory
+Constant Value Column Appender,org.knime.base.node.preproc.constantvalue.ConstantValueColumnNodeFactory2
 CSV Reader,org.knime.base.node.io.filehandling.csv.reader.CSVTableReaderNodeFactory
 CSV Writer,org.knime.base.node.io.filehandling.csv.writer.CSVWriter2NodeFactory
+Date Shifter,org.knime.time.node.manipulate.datetimeshift.DateShiftNodeFactory
+Date&Time Difference,org.knime.time.node.calculate.datetimedifference.DateTimeDifferenceNodeFactory2
+DB Connector,org.knime.database.node.connector.generic.DBConnectorNodeFactory
+DB Query Reader,org.knime.database.node.io.reader.query.DBQueryReaderNodeFactory
 Decision Tree Learner,org.knime.base.node.mine.decisiontree2.learner2.DecisionTreeLearnerNodeFactory3
 Decision Tree Predictor,org.knime.base.node.mine.decisiontree2.predictor2.DecTreePredictorNodeFactory
+Duplicate Row Filter,org.knime.base.node.preproc.duplicates.DuplicateRowFilterNodeFactory
 Equal Size Sampling,org.knime.base.node.preproc.equalsizesampling.EqualSizeSamplingNodeFactory
 Excel Reader,org.knime.ext.poi3.node.io.filehandling.excel.reader.ExcelTableReaderNodeFactory
 Excel Writer,org.knime.ext.poi3.node.io.filehandling.excel.writer.ExcelTableWriterNodeFactory
 Gradient Boosted Trees Learner,org.knime.base.node.mine.treeensemble2.node.gradientboosting.learner.classification.GradientBoostingClassificationLearnerNodeFactory2
 Gradient Boosted Trees to PMML,org.knime.base.node.mine.treeensemble2.node.gradientboosting.pmml.exporter.GBTPMMLExporterNodeFactory
 Gradient Boosted Trees Predictor,org.knime.base.node.mine.treeensemble2.node.gradientboosting.predictor.classification.GradientBoostingClassificationPredictorNodeFactory3
+GroupBy,org.knime.base.node.preproc.groupby.GroupByNodeFactory
+Joiner,org.knime.base.node.preproc.joiner3.Joiner3NodeFactory
 K Nearest Neighbor,org.knime.base.node.mine.knn.KnnNodeFactory2
 Linear Correlation,org.knime.base.node.preproc.correlation.compute2.CorrelationCompute2NodeFactory
+Linear Regression Learner,org.knime.base.node.mine.regression.linear2.learner.LinReg2LearnerNodeFactory2
 Logistic Regression Learner,org.knime.base.node.mine.regression.logistic.learner4.LogRegLearnerNodeFactory4
 Logistic Regression Predictor,org.knime.base.node.mine.regression.logistic.predictor.LogisticRegressionPredictorNodeFactory
 Math Formula,org.knime.ext.jep.JEPNodeFactory
@@ -30,26 +42,40 @@ Normalizer,org.knime.base.node.preproc.normalize3.Normalizer3NodeFactory
 Normalizer Apply,org.knime.base.node.preproc.normalize.NormalizerApplyNodeFactory
 Normalizer _PMML_,org.knime.base.node.preproc.pmml.normalize.NormalizerPMMLNodeFactory2
 Normalizer Apply _PMML_,org.knime.base.node.preproc.pmml.normalize.NormalizerPMMLApplyNodeFactory
+Numeric Scorer,org.knime.base.node.mine.scorer.numeric2.NumericScorer2NodeFactory
 One to Many,org.knime.base.node.preproc.columntrans2.One2ManyCol2NodeFactory
 Partitioning,org.knime.base.node.preproc.partition.PartitionNodeFactory
+Pivot,org.knime.base.node.preproc.pivot.Pivot2NodeFactory
 PMML Reader,org.knime.base.node.io.filehandling.pmml.reader.PMMLReaderNodeFactory3
 PMML Writer,org.knime.base.node.io.filehandling.pmml.writer.PMMLWriterNodeFactory2
+PostgreSQL Connector,org.knime.database.extension.postgres.node.connector.PostgreSQLDBConnectorNodeFactory
+Python Script,org.knime.python3.scripting.nodes2.script.PythonScriptNodeFactory
 Random Forest Learner,org.knime.base.node.mine.treeensemble2.node.randomforest.learner.classification.RandomForestClassificationLearnerNodeFactory2
 Random Forest Predictor,org.knime.base.node.mine.treeensemble2.node.randomforest.predictor.classification.RandomForestClassificationPredictorNodeFactory2
 Reference Row Splitter,org.knime.base.node.preproc.filter.rowref.RowSplitRefNodeFactory
+Regression Predictor,org.knime.base.node.mine.regression.predict3.RegressionPredictorNodeFactory2
 ROC Curve,org.knime.base.views.node.roccurve.ROCCurveNodeFactory
 Row Aggregator,org.knime.base.node.preproc.rowagg.RowAggregatorNodeFactory
 Row Filter,org.knime.base.node.preproc.filter.row3.RowFilterNodeFactory
+Row Filter,org.knime.js.base.node.quickform.filter.value.ValueFilterQuickFormNodeFactory
+Row Splitter,org.knime.base.node.preproc.filter.row3.RowSplitterNodeFactory
 Rule Engine,org.knime.base.node.rules.engine.RuleEngineNodeFactory
+Rule-based Row Filter,org.knime.base.node.rules.engine.RuleEngineFilterNodeFactory
+Scatter Plot,org.knime.base.views.node.scatterplot.ScatterPlotNodeFactory
 Scorer,org.knime.base.node.mine.scorer.accuracy.AccuracyScorer2NodeFactory
 SMOTE,org.knime.base.node.mine.smote.SmoteNodeFactory
+Sorter,org.knime.base.node.preproc.sorter.SorterNodeFactory
 Statistics,org.knime.base.node.stats.viz.extended.ExtendedStatisticsNodeFactory
 String Manipulation _Multi Column_,org.knime.base.node.preproc.stringmanipulation.multicolumn.MultiColumnStringManipulationNodeFactory
 String Manipulation,org.knime.base.node.preproc.stringmanipulation.StringManipulationNodeFactory
+String to Date&Time,org.knime.time.node.convert.stringtodatetime.StringToDateTimeNodeFactory2
 String to Number,org.knime.base.node.preproc.colconvert.stringtonumber2.StringToNumber2NodeFactory
 SVM Learner,org.knime.base.node.mine.svm.learner.SVMLearnerNodeFactory2
 SVM Predictor,org.knime.base.node.mine.svm.predictor2.SVMPredictorNodeFactory
+Table Creator,org.knime.base.node.io.tablecreator.TableCreator2NodeFactory
 Table View,org.knime.base.views.node.tableview.TableViewNodeFactory
+Time Shifter,org.knime.time.node.manipulate.datetimeshift.TimeShiftNodeFactory
+Unpivot,org.knime.base.node.preproc.unpivot2.Unpivot2NodeFactory
 Value Lookup,org.knime.base.node.preproc.valuelookup.ValueLookupNodeFactory
 X_Aggregator,org.knime.base.node.meta.xvalidation.AggregateOutputNodeFactory
 X_Partitioner,org.knime.base.node.meta.xvalidation.XValidatePartitionerFactory
