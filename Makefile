@@ -286,15 +286,15 @@ prod-check: ensure-k2p-image ensure-k2pweb-image ## Run your production smoke-ch
 update-cf-ips: ## Refresh Cloudflare IP allowlist for nginx real_ip
 	./scripts/update_cloudflare_ips.sh
 
-prod-update-k2p: ## Pull K2P_IMAGE and restart api+worker so handlers.csv is regenerated
+prod-update-k2p: ## Pull K2P_IMAGE and restart api+worker/nginx so handlers.csv is regenerated
 	docker pull "$(K2P_IMAGE)"
-	$(PROD_DC) up -d $(PROD_UP_FLAGS) --force-recreate api worker
+	$(PROD_DC) up -d $(PROD_UP_FLAGS) --force-recreate api worker nginx
 
-prod-update-web: ensure-k2pweb-image ## Pull K2PWEB_IMAGE, migrate, collectstatic, and restart app services
+prod-update-web: ensure-k2pweb-image ## Pull K2PWEB_IMAGE, migrate, collectstatic, and restart app/nginx services
 	$(PROD_DC) up -d postgres
 	$(PROD_DC) run --rm api python manage.py migrate
 	$(PROD_DC) --profile ops run --rm collectstatic
-	$(PROD_DC) up -d $(PROD_UP_FLAGS) --force-recreate api worker
+	$(PROD_DC) up -d $(PROD_UP_FLAGS) --force-recreate api worker nginx
 
 prod-clean-restart: ensure-k2p-image ensure-k2pweb-image ## Rebuild + migrate + collectstatic + restart production stack
 	$(PROD_DC) down --remove-orphans
