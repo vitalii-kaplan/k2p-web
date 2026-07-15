@@ -41,3 +41,36 @@ class RetentionCleanupTests(TestCase):
 
                 self.assertFalse(Job.objects.filter(id=job.id).exists())
                 self.assertTrue(JobSettingsMeta.objects.filter(file_name="settings.xml").exists())
+
+    def test_cleanup_deletes_stale_running_jobs_but_keeps_recent_ones(self) -> None:
+        now = timezone.now()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            job_root = Path(tmpdir) / "jobs"
+            result_root = Path(tmpdir) / "results"
+            job_root.mkdir(parents=True, exist_ok=True)
+            result_root.mkdir(parents=True, exist_ok=True)
+
+            with override_settings(
+                JOB_STORAGE_ROOT=job_root,
+                RESULT_STORAGE_ROOT=result_root,
+                RETENTION_FAILED_DAYS=1,
+                RETENTION_SUCCEEDED_DAYS=-1,
+            ):
+                stale_started = Job.objects.create(
+                    status=Job.Status.RUNNING,
+                    started_at=now - datetime.timedelta(days=2),
+                )
+                stale_unstarted = Job.objects.create(status=Job.Status.RUNNING)
+                Job.objects.filter(id=stale_unstarted.id).update(
+                    created_at=now - datetime.timedelta(days=2)
+                )
+                recent = Job.objects.create(
+                    status=Job.Status.RUNNING,
+                    started_at=now - datetime.timedelta(hours=12),
+                )
+
+                Command()._cleanup_old_jobs()
+
+                self.assertFalse(Job.objects.filter(id=stale_started.id).exists())
+                self.assertFalse(Job.objects.filter(id=stale_unstarted.id).exists())
+                self.assertTrue(Job.objects.filter(id=recent.id).exists())

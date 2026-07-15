@@ -14,6 +14,7 @@ from prometheus_client import start_http_server
 from django.conf import settings
 from django.core.management.base import BaseCommand
 from django.db import transaction
+from django.db.models import Q
 from django.utils import timezone
 
 from apps.core.db_logging import log_db_settings
@@ -299,12 +300,21 @@ class Command(BaseCommand):
         if failed_days >= 0:
             cutoff = now - datetime.timedelta(days=failed_days)
             self._delete_jobs_older_than(Job.Status.FAILED, cutoff)
+            self._delete_running_jobs_older_than(cutoff)
         if succeeded_days >= 0:
             cutoff = now - datetime.timedelta(days=succeeded_days)
             self._delete_jobs_older_than(Job.Status.SUCCEEDED, cutoff)
 
     def _delete_jobs_older_than(self, status: Job.Status, cutoff) -> None:
         old_jobs = Job.objects.filter(status=status, finished_at__lt=cutoff)[:100]
+        for job in old_jobs:
+            self._delete_job_artifacts(job)
+            job.delete()
+
+    def _delete_running_jobs_older_than(self, cutoff) -> None:
+        old_jobs = Job.objects.filter(status=Job.Status.RUNNING).filter(
+            Q(started_at__lt=cutoff) | Q(started_at__isnull=True, created_at__lt=cutoff)
+        )[:100]
         for job in old_jobs:
             self._delete_job_artifacts(job)
             job.delete()
